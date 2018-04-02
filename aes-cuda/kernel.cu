@@ -19,7 +19,7 @@ typedef unsigned short	u16;
 typedef unsigned int	u32;
 
 #define BLOCKS							1024
-#define THREADS							896
+#define THREADS							640
 #define THREAD_COUNT					BLOCKS * THREADS
 
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
@@ -536,21 +536,23 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 //	//cipherText[15] = s3 & 0xff;
 //}
 
-__global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plaintext
-								 u32 ct0, u32 ct1, u32 ct2, u32 ct3,  // Ciphertext
-								 u32 k0, u32 k1, u32 k2, u32 k3,  // Key
+__global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk,
 								 u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG,  // Tables
 								 unsigned long int range) {
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	
-	// Create round keys
+	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE];
 	__shared__ u32 t1S[TABLE_SIZE];
 	__shared__ u32 t2S[TABLE_SIZE];
 	__shared__ u32 t3S[TABLE_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
 	__shared__ u32 rconS[10];
+	__shared__ u32 ptS[4];
+	__shared__ u32 ctS[4];
+	__shared__ u32 rkS[4];
+
 	if (threadIndex < TABLE_SIZE) {
 		t0S[threadIndex] = t0G[threadIndex];
 		t1S[threadIndex] = t1G[threadIndex];
@@ -561,6 +563,12 @@ __global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plainte
 	if (threadIndex < 10) {
 		rconS[threadIndex] = rconG[threadIndex];
 	}
+	if (threadIndex < 4) {
+		ptS[threadIndex] = pt[threadIndex];
+		ctS[threadIndex] = ct[threadIndex];
+		rkS[threadIndex] = rk[threadIndex];
+	}
+	// </SHARED MEMORY>
 
 	// Wait until every thread is ready
 	__syncthreads();
@@ -569,25 +577,25 @@ __global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plainte
 	for (unsigned long int rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
-		rk0 = k0;
-		rk1 = k1;
-		rk2 = k2;
-		rk3 = k3;
+		rk0 = rkS[0];
+		rk1 = rkS[1];
+		rk2 = rkS[2];
+		rk3 = rkS[3];
 		
 		// Create key as 32 bit unsigned integers
 		rk3 += threadIndex * threadRange + rangeCount;
 		// TODO: overflow
 
-		if (threadIndex == 0) {
-			printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
-		}
+		//if (threadIndex == 0 && rangeCount < 10) {
+		//	printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
+		//}
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = pt0;
-		s1 = pt1;
-		s2 = pt2;
-		s3 = pt3;
+		s0 = ptS[0];
+		s1 = ptS[1];
+		s2 = ptS[2];
+		s3 = ptS[3];
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -640,16 +648,16 @@ __global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plainte
 		
 		// Last round uses s-box directly and XORs to produce output.
 		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
-		if (s0 == ct0) {
+		if (s0 == ctS[0]) {
 			rk1 = rk1 ^ rk0;
 			s1 = (t4S[t1 >> 24] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t0) & 0xFF] & 0x000000FF) ^ rk1;
-			if (s1 == ct1) {
+			if (s1 == ctS[1]) {
 				rk2 = rk2 ^ rk1;
 				s2 = (t4S[t2 >> 24] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t1) & 0xFF] & 0x000000FF) ^ rk2;
-				if (s2 == ct2) {
+				if (s2 == ctS[2]) {
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
-					if (s3 == ct3) {
+					if (s3 == ctS[3]) {
 						printf("! %d Found key: %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
 					}
 				}
@@ -659,22 +667,28 @@ __global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plainte
 }
 
 int main() {
-	
-	// Key
-	u32 rk0 = 0x2B7E1516U;
-	u32 rk1 = 0x28AED2A6U;
-	u32 rk2 = 0xABF71588U;
-	u32 rk3 = 0x09CF4F3CU;
-	// Plaintext
-	u32 pt0 = 0x3243F6A8U;
-	u32 pt1 = 0x885A308DU;
-	u32 pt2 = 0x313198A2U;
-	u32 pt3 = 0xE0370734U;
-	// Ciphertext
-	u32 ct0 = 0x3925841DU;
-	u32 ct1 = 0x02DC09FBU;
-	u32 ct2 = 0xDC118597U;
-	u32 ct3 = 0x196A0B32U;
+
+	// Allocate key
+	u32* rk;
+	gpuErrorCheck(cudaMallocManaged(&rk, TABLE_SIZE * sizeof(u32)));
+	rk[0] = 0x2B7E1516U;
+	rk[1] = 0x28AED2A6U;
+	rk[2] = 0xABF71588U;
+	rk[3] = 0x09CF4F3CU;
+	// Allocate plaintext
+	u32* pt;
+	gpuErrorCheck(cudaMallocManaged(&pt, TABLE_SIZE * sizeof(u32)));
+	pt[0] = 0x3243F6A8U;
+	pt[1] = 0x885A308DU;
+	pt[2] = 0x313198A2U;
+	pt[3] = 0xE0370734U;
+	// Allocate ciphertext
+	u32* ct;
+	gpuErrorCheck(cudaMallocManaged(&ct, TABLE_SIZE * sizeof(u32)));
+	ct[0] = 0x3925841DU;
+	ct[1] = 0x02DC09FBU;
+	ct[2] = 0xDC118597U;
+	ct[3] = 0x196A0B32U;
 
 	// Allocate S-BOX
 	u8* sBox;
@@ -715,10 +729,9 @@ int main() {
 		rcon[i] = RCON32[i];
 	}
 
-
 	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
-	exhaustiveSearch<<<BLOCKS, THREADS>>>(pt0, pt1, pt2, pt3, ct0, ct1, ct2, ct3, rk0, rk1, rk2, rk3, t0, t1, t2, t3, t4, rcon, sBox, (unsigned long int) pow(2, 27));
+	exhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, (unsigned long int) pow(2, 27));
 	
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
