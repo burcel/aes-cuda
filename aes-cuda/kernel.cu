@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <ctime>
 
 // CUDA runtime
 #include <cuda_runtime.h>
@@ -17,14 +18,34 @@ typedef unsigned char	u8;
 typedef unsigned short	u16;
 typedef unsigned int	u32;
 
-#define BLOCKS							2
-#define THREADS							4
+#define BLOCKS							1024
+#define THREADS							896
+#define THREAD_COUNT					BLOCKS * THREADS
 
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
+#define TABLE_SIZE						256
 #define ROUND_COUNT						10
 #define BYTE_COUNT						16  // 128 / 8
 
-__constant__ u32 T0[256] = {
+u8 S_BOX[TABLE_SIZE] = {
+	0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
+	0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
+	0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
+	0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x75,
+	0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84,
+	0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF,
+	0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA8,
+	0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2,
+	0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73,
+	0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xDB,
+	0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79,
+	0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08,
+	0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8A,
+	0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E,
+	0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
+	0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
+};
+u32 T0[TABLE_SIZE] = {
 	0xc66363a5U, 0xf87c7c84U, 0xee777799U, 0xf67b7b8dU,
 	0xfff2f20dU, 0xd66b6bbdU, 0xde6f6fb1U, 0x91c5c554U,
 	0x60303050U, 0x02010103U, 0xce6767a9U, 0x562b2b7dU,
@@ -90,7 +111,7 @@ __constant__ u32 T0[256] = {
 	0x824141c3U, 0x299999b0U, 0x5a2d2d77U, 0x1e0f0f11U,
 	0x7bb0b0cbU, 0xa85454fcU, 0x6dbbbbd6U, 0x2c16163aU,
 };
-__constant__ u32 T1[256] = {
+u32 T1[TABLE_SIZE] = {
 	0xa5c66363U, 0x84f87c7cU, 0x99ee7777U, 0x8df67b7bU,
 	0x0dfff2f2U, 0xbdd66b6bU, 0xb1de6f6fU, 0x5491c5c5U,
 	0x50603030U, 0x03020101U, 0xa9ce6767U, 0x7d562b2bU,
@@ -156,7 +177,7 @@ __constant__ u32 T1[256] = {
 	0xc3824141U, 0xb0299999U, 0x775a2d2dU, 0x111e0f0fU,
 	0xcb7bb0b0U, 0xfca85454U, 0xd66dbbbbU, 0x3a2c1616U,
 };
-__constant__ u32 T2[256] = {
+u32 T2[TABLE_SIZE] = {
 	0x63a5c663U, 0x7c84f87cU, 0x7799ee77U, 0x7b8df67bU,
 	0xf20dfff2U, 0x6bbdd66bU, 0x6fb1de6fU, 0xc55491c5U,
 	0x30506030U, 0x01030201U, 0x67a9ce67U, 0x2b7d562bU,
@@ -222,7 +243,7 @@ __constant__ u32 T2[256] = {
 	0x41c38241U, 0x99b02999U, 0x2d775a2dU, 0x0f111e0fU,
 	0xb0cb7bb0U, 0x54fca854U, 0xbbd66dbbU, 0x163a2c16U,
 };
-__constant__ u32 T3[256] = {
+u32 T3[TABLE_SIZE] = {
 
 	0x6363a5c6U, 0x7c7c84f8U, 0x777799eeU, 0x7b7b8df6U,
 	0xf2f20dffU, 0x6b6bbdd6U, 0x6f6fb1deU, 0xc5c55491U,
@@ -289,7 +310,7 @@ __constant__ u32 T3[256] = {
 	0x4141c382U, 0x9999b029U, 0x2d2d775aU, 0x0f0f111eU,
 	0xb0b0cb7bU, 0x5454fca8U, 0xbbbbd66dU, 0x16163a2cU,
 };
-__constant__ u32 T4[256] = {
+u32 T4[TABLE_SIZE] = {
 	0x63636363U, 0x7c7c7c7cU, 0x77777777U, 0x7b7b7b7bU,
 	0xf2f2f2f2U, 0x6b6b6b6bU, 0x6f6f6f6fU, 0xc5c5c5c5U,
 	0x30303030U, 0x01010101U, 0x67676767U, 0x2b2b2b2bU,
@@ -356,13 +377,13 @@ __constant__ u32 T4[256] = {
 	0xb0b0b0b0U, 0x54545454U, 0xbbbbbbbbU, 0x16161616U,
 };
 /* for 128-bit blocks, Rijndael never uses more than 10 rcon values */
-__constant__ u32 RCON32[10] = {
+u32 RCON32[10] = {
 	0x01000000, 0x02000000, 0x04000000, 0x08000000,
 	0x10000000, 0x20000000, 0x40000000, 0x80000000,
 	0x1B000000, 0x36000000,
 };
 
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+#define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
 {
 	if (code != cudaSuccess) {
@@ -371,183 +392,202 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 	}
 }
 
-// Functions
-void printIntAsHex(u32 s0);
+//__device__ void keyExpansion(u8* key, u32* rk) {
+//
+//	printf("keyExpansion\n");
+//
+//	rk[0] = ((u32)key[0] << 24) ^ ((u32)key[1] << 16) ^ ((u32)key[2] << 8) ^ ((u32)key[3]);
+//	rk[1] = ((u32)key[4] << 24) ^ ((u32)key[5] << 16) ^ ((u32)key[6] << 8) ^ ((u32)key[7]);
+//	rk[2] = ((u32)key[8] << 24) ^ ((u32)key[9] << 16) ^ ((u32)key[10] << 8) ^ ((u32)key[11]);
+//	rk[3] = ((u32)key[12] << 24) ^ ((u32)key[13] << 16) ^ ((u32)key[14] << 8) ^ ((u32)key[15]);
+//
+//	//printf("-- Round 0:\n");
+//	//printf("%08x\n", rk[0]);
+//	//printf("%08x\n", rk[1]);
+//	//printf("%08x\n", rk[2]);
+//	//printf("%08x\n", rk[3]);
+//
+//	for (int rc = 0; rc < ROUND_COUNT; rc++) {
+//		u32 temp = rk[rc * 4 + 3];
+//		rk[rc * 4 + 4] = rk[rc * 4] ^
+//		(T4[(temp >> 16) & 0xff] & 0xff000000) ^
+//		(T4[(temp >> 8) & 0xff] & 0x00ff0000) ^
+//		(T4[(temp) & 0xff] & 0x0000ff00) ^
+//		(T4[(temp >> 24)] & 0x000000ff) ^
+//		RCON32[rc];
+//		rk[rc * 4 + 5] = rk[rc * 4 + 1] ^ rk[rc * 4 + 4];
+//		rk[rc * 4 + 6] = rk[rc * 4 + 2] ^ rk[rc * 4 + 5];
+//		rk[rc * 4 + 7] = rk[rc * 4 + 3] ^ rk[rc * 4 + 6];
+//
+//		//printf("-- Round %d:\n", rc + 1);
+//		//printf("%08x\n", rk[rc * 4 + 4]);
+//		//printf("%08x\n", rk[rc * 4 + 5]);
+//		//printf("%08x\n", rk[rc * 4 + 6]);
+//		//printf("%08x\n", rk[rc * 4 + 7]);
+//	}
+//
+//}
+//
+//__global__ void enc(u8* key, u8* plainTextInput) {
+//
+//	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+//
+//	printf("Thread index: %d\n", threadIndex);
+//
+//	// Create round keys
+//	__shared__ u32 rk[TABLE_BASED_KEY_LIST_ROW_SIZE];
+//	if (threadIndex == 0) {
+//		keyExpansion(key, rk);
+//	}
+//
+//	// Wait until key schedule is finished
+//	__syncthreads();
+//
+//	//printf("\n");
+//	//printf("## Starting ##\n");
+//	//printf("\n");
+//
+//	// Create plaintext as 32 bit unsigned integers
+//	u32 s0, s1, s2, s3;
+//	s0 = ((u32)plainTextInput[0] << 24) |
+//		((u32)plainTextInput[1] << 16) |
+//		((u32)plainTextInput[2] << 8) |
+//		((u32)plainTextInput[3]);
+//
+//	s1 = ((u32)plainTextInput[4] << 24) |
+//		((u32)plainTextInput[5] << 16) |
+//		((u32)plainTextInput[6] << 8) |
+//		((u32)plainTextInput[7]);
+//
+//	s2 = ((u32)plainTextInput[8] << 24) |
+//		((u32)plainTextInput[9] << 16) |
+//		((u32)plainTextInput[10] << 8) |
+//		((u32)plainTextInput[11]);
+//
+//	s3 = ((u32)plainTextInput[12] << 24) |
+//		((u32)plainTextInput[13] << 16) |
+//		((u32)plainTextInput[14] << 8) |
+//		((u32)plainTextInput[15]);
+//	
+//	// First round just XORs input with key.
+//	s0 = s0 ^ rk[0];
+//	s1 = s1 ^ rk[1];
+//	s2 = s2 ^ rk[2];
+//	s3 = s3 ^ rk[3];
+//
+//	u32 t0, t1, t2, t3;
+//	for (int roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+//		t0 = T0[s0 >> 24] ^ T1[(s1 >> 16) & 0xFF] ^ T2[(s2 >> 8) & 0xFF] ^ T3[s3 & 0xFF] ^ rk[roundCount * 4 + 0];
+//		t1 = T0[s1 >> 24] ^ T1[(s2 >> 16) & 0xFF] ^ T2[(s3 >> 8) & 0xFF] ^ T3[s0 & 0xFF] ^ rk[roundCount * 4 + 1];
+//		t2 = T0[s2 >> 24] ^ T1[(s3 >> 16) & 0xFF] ^ T2[(s0 >> 8) & 0xFF] ^ T3[s1 & 0xFF] ^ rk[roundCount * 4 + 2];
+//		t3 = T0[s3 >> 24] ^ T1[(s0 >> 16) & 0xFF] ^ T2[(s1 >> 8) & 0xFF] ^ T3[s2 & 0xFF] ^ rk[roundCount * 4 + 3];
+//
+//		s0 = t0;
+//		s1 = t1;
+//		s2 = t2;
+//		s3 = t3;
+//
+//		//printf("-- Round: %d\n", roundCount);
+//		//printf("%08x\n", s0);
+//		//printf("%08x\n", s1);
+//		//printf("%08x\n", s2);
+//		//printf("%08x\n", s3);
+//		//printf("-- Round Key\n");
+//		//printf("%08x\n", rk[roundCount * 4 + 0]);
+//		//printf("%08x\n", rk[roundCount * 4 + 1]);
+//		//printf("%08x\n", rk[roundCount * 4 + 2]);
+//		//printf("%08x\n", rk[roundCount * 4 + 3]);
+//	}
+//
+//	// Last round uses s-box directly and XORs to produce output.
+//	s0 = (T4[t0 >> 24] & 0xFF000000) ^ (T4[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t3) & 0xFF] & 0x000000FF) ^ rk[40];
+//	s1 = (T4[t1 >> 24] & 0xFF000000) ^ (T4[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t0) & 0xFF] & 0x000000FF) ^ rk[41];
+//	s2 = (T4[t2 >> 24] & 0xFF000000) ^ (T4[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t1) & 0xFF] & 0x000000FF) ^ rk[42];
+//	s3 = (T4[t3 >> 24] & 0xFF000000) ^ (T4[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t2) & 0xFF] & 0x000000FF) ^ rk[43];
+//
+//	//printf("-- Round: %d\n", 10);
+//	//printf("%08x\n", s0);
+//	//printf("%08x\n", s1);
+//	//printf("%08x\n", s2);
+//	//printf("%08x\n", s3);
+//	//printf("-- Round Key\n");
+//	//printf("%08x\n", rk[40]);
+//	//printf("%08x\n", rk[41]);
+//	//printf("%08x\n", rk[42]);
+//	//printf("%08x\n", rk[43]);
+//
+//	// Create ciphertext as byte array from 32 bit unsigned integers
+//	//u8 cipherText[16];
+//	//cipherText[0] = s0 >> 24;
+//	//cipherText[1] = (s0 >> 16) & 0xff;
+//	//cipherText[2] = (s0 >> 8) & 0xff;
+//	//cipherText[3] = s0 & 0xff;
+//	//cipherText[4] = s1 >> 24;
+//	//cipherText[5] = (s1 >> 16) & 0xff;
+//	//cipherText[6] = (s1 >> 8) & 0xff;
+//	//cipherText[7] = s1 & 0xff;
+//	//cipherText[8] = s2 >> 24;
+//	//cipherText[9] = (s2 >> 16) & 0xff;
+//	//cipherText[10] = (s2 >> 8) & 0xff;
+//	//cipherText[11] = s2 & 0xff;
+//	//cipherText[12] = s3 >> 24;
+//	//cipherText[13] = (s3 >> 16) & 0xff;
+//	//cipherText[14] = (s3 >> 8) & 0xff;
+//	//cipherText[15] = s3 & 0xff;
+//}
 
-__device__ void keyExpansion(u8* key, u32* rk) {
-
-	printf("keyExpansion\n");
-
-	rk[0] = ((u32)key[0] << 24) ^ ((u32)key[1] << 16) ^ ((u32)key[2] << 8) ^ ((u32)key[3]);
-	rk[1] = ((u32)key[4] << 24) ^ ((u32)key[5] << 16) ^ ((u32)key[6] << 8) ^ ((u32)key[7]);
-	rk[2] = ((u32)key[8] << 24) ^ ((u32)key[9] << 16) ^ ((u32)key[10] << 8) ^ ((u32)key[11]);
-	rk[3] = ((u32)key[12] << 24) ^ ((u32)key[13] << 16) ^ ((u32)key[14] << 8) ^ ((u32)key[15]);
-
-	//printf("-- Round 0:\n");
-	//printf("%08x\n", rk[0]);
-	//printf("%08x\n", rk[1]);
-	//printf("%08x\n", rk[2]);
-	//printf("%08x\n", rk[3]);
-
-	for (int rc = 0; rc < ROUND_COUNT; rc++) {
-		u32 temp = rk[rc * 4 + 3];
-		rk[rc * 4 + 4] = rk[rc * 4] ^
-		(T4[(temp >> 16) & 0xff] & 0xff000000) ^
-		(T4[(temp >> 8) & 0xff] & 0x00ff0000) ^
-		(T4[(temp) & 0xff] & 0x0000ff00) ^
-		(T4[(temp >> 24)] & 0x000000ff) ^
-		RCON32[rc];
-		rk[rc * 4 + 5] = rk[rc * 4 + 1] ^ rk[rc * 4 + 4];
-		rk[rc * 4 + 6] = rk[rc * 4 + 2] ^ rk[rc * 4 + 5];
-		rk[rc * 4 + 7] = rk[rc * 4 + 3] ^ rk[rc * 4 + 6];
-
-		//printf("-- Round %d:\n", rc + 1);
-		//printf("%08x\n", rk[rc * 4 + 4]);
-		//printf("%08x\n", rk[rc * 4 + 5]);
-		//printf("%08x\n", rk[rc * 4 + 6]);
-		//printf("%08x\n", rk[rc * 4 + 7]);
-	}
-
-}
-
-__global__ void enc(u8* key, u8* plainTextInput) {
+__global__ void exhaustiveSearch(u32 pt0, u32 pt1, u32 pt2, u32 pt3,  // Plaintext
+								 u32 ct0, u32 ct1, u32 ct2, u32 ct3,  // Ciphertext
+								 u32 k0, u32 k1, u32 k2, u32 k3,  // Key
+								 u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG,  // Tables
+								 unsigned long int range) {
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-
-	printf("Thread index: %d\n", threadIndex);
-
+	
 	// Create round keys
-	__shared__ u32 rk[TABLE_BASED_KEY_LIST_ROW_SIZE];
-	if (threadIndex == 0) {
-		keyExpansion(key, rk);
+	__shared__ u32 t0S[TABLE_SIZE];
+	__shared__ u32 t1S[TABLE_SIZE];
+	__shared__ u32 t2S[TABLE_SIZE];
+	__shared__ u32 t3S[TABLE_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE];
+	__shared__ u32 rconS[10];
+	if (threadIndex < TABLE_SIZE) {
+		t0S[threadIndex] = t0G[threadIndex];
+		t1S[threadIndex] = t1G[threadIndex];
+		t2S[threadIndex] = t2G[threadIndex];
+		t3S[threadIndex] = t3G[threadIndex];
+		t4S[threadIndex] = t4G[threadIndex];
+	}
+	if (threadIndex < 10) {
+		rconS[threadIndex] = rconG[threadIndex];
 	}
 
-	// Wait until key schedule is finished
+	// Wait until every thread is ready
 	__syncthreads();
 
-	//printf("\n");
-	//printf("## Starting ##\n");
-	//printf("\n");
-
-	// Create plaintext as 32 bit unsigned integers
-	u32 s0, s1, s2, s3;
-	s0 = ((u32)plainTextInput[0] << 24) |
-		((u32)plainTextInput[1] << 16) |
-		((u32)plainTextInput[2] << 8) |
-		((u32)plainTextInput[3]);
-
-	s1 = ((u32)plainTextInput[4] << 24) |
-		((u32)plainTextInput[5] << 16) |
-		((u32)plainTextInput[6] << 8) |
-		((u32)plainTextInput[7]);
-
-	s2 = ((u32)plainTextInput[8] << 24) |
-		((u32)plainTextInput[9] << 16) |
-		((u32)plainTextInput[10] << 8) |
-		((u32)plainTextInput[11]);
-
-	s3 = ((u32)plainTextInput[12] << 24) |
-		((u32)plainTextInput[13] << 16) |
-		((u32)plainTextInput[14] << 8) |
-		((u32)plainTextInput[15]);
-	
-	// First round just XORs input with key.
-	s0 = s0 ^ rk[0];
-	s1 = s1 ^ rk[1];
-	s2 = s2 ^ rk[2];
-	s3 = s3 ^ rk[3];
-
-	u32 t0, t1, t2, t3;
-	for (int roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
-		t0 = T0[s0 >> 24] ^ T1[(s1 >> 16) & 0xFF] ^ T2[(s2 >> 8) & 0xFF] ^ T3[s3 & 0xFF] ^ rk[roundCount * 4 + 0];
-		t1 = T0[s1 >> 24] ^ T1[(s2 >> 16) & 0xFF] ^ T2[(s3 >> 8) & 0xFF] ^ T3[s0 & 0xFF] ^ rk[roundCount * 4 + 1];
-		t2 = T0[s2 >> 24] ^ T1[(s3 >> 16) & 0xFF] ^ T2[(s0 >> 8) & 0xFF] ^ T3[s1 & 0xFF] ^ rk[roundCount * 4 + 2];
-		t3 = T0[s3 >> 24] ^ T1[(s0 >> 16) & 0xFF] ^ T2[(s1 >> 8) & 0xFF] ^ T3[s2 & 0xFF] ^ rk[roundCount * 4 + 3];
-
-		s0 = t0;
-		s1 = t1;
-		s2 = t2;
-		s3 = t3;
-
-		//printf("-- Round: %d\n", roundCount);
-		//printf("%08x\n", s0);
-		//printf("%08x\n", s1);
-		//printf("%08x\n", s2);
-		//printf("%08x\n", s3);
-		//printf("-- Round Key\n");
-		//printf("%08x\n", rk[roundCount * 4 + 0]);
-		//printf("%08x\n", rk[roundCount * 4 + 1]);
-		//printf("%08x\n", rk[roundCount * 4 + 2]);
-		//printf("%08x\n", rk[roundCount * 4 + 3]);
-	}
-
-	// Last round uses s-box directly and XORs to produce output.
-	s0 = (T4[t0 >> 24] & 0xFF000000) ^ (T4[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t3) & 0xFF] & 0x000000FF) ^ rk[40];
-	s1 = (T4[t1 >> 24] & 0xFF000000) ^ (T4[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t0) & 0xFF] & 0x000000FF) ^ rk[41];
-	s2 = (T4[t2 >> 24] & 0xFF000000) ^ (T4[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t1) & 0xFF] & 0x000000FF) ^ rk[42];
-	s3 = (T4[t3 >> 24] & 0xFF000000) ^ (T4[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t2) & 0xFF] & 0x000000FF) ^ rk[43];
-
-	//printf("-- Round: %d\n", 10);
-	//printf("%08x\n", s0);
-	//printf("%08x\n", s1);
-	//printf("%08x\n", s2);
-	//printf("%08x\n", s3);
-	//printf("-- Round Key\n");
-	//printf("%08x\n", rk[40]);
-	//printf("%08x\n", rk[41]);
-	//printf("%08x\n", rk[42]);
-	//printf("%08x\n", rk[43]);
-
-	// Create ciphertext as byte array from 32 bit unsigned integers
-	//u8 cipherText[16];
-	//cipherText[0] = s0 >> 24;
-	//cipherText[1] = (s0 >> 16) & 0xff;
-	//cipherText[2] = (s0 >> 8) & 0xff;
-	//cipherText[3] = s0 & 0xff;
-	//cipherText[4] = s1 >> 24;
-	//cipherText[5] = (s1 >> 16) & 0xff;
-	//cipherText[6] = (s1 >> 8) & 0xff;
-	//cipherText[7] = s1 & 0xff;
-	//cipherText[8] = s2 >> 24;
-	//cipherText[9] = (s2 >> 16) & 0xff;
-	//cipherText[10] = (s2 >> 8) & 0xff;
-	//cipherText[11] = s2 & 0xff;
-	//cipherText[12] = s3 >> 24;
-	//cipherText[13] = (s3 >> 16) & 0xff;
-	//cipherText[14] = (s3 >> 8) & 0xff;
-	//cipherText[15] = s3 & 0xff;
-}
-
-__global__ void exhaustiveSearch(u8* pt, u8* ct, u8* key, unsigned long int range) {
-
-	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
-	int totalThreadCount = BLOCKS * THREADS;
-	unsigned long int threadRange = range / totalThreadCount;
-
-	printf("Thread index: %d\n", threadIndex);
-	printf("Thread count: %d\n", totalThreadCount);
-	printf("threadRange:  %d\n", threadRange);
-
+	unsigned long int threadRange = range / (THREAD_COUNT);
 	for (unsigned long int rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		u32 rk0, rk1, rk2, rk3;
+		rk0 = k0;
+		rk1 = k1;
+		rk2 = k2;
+		rk3 = k3;
 		
 		// Create key as 32 bit unsigned integers
-		u32 rk0, rk1, rk2, rk3;
-		rk0 = ((u32)key[0]  << 24) ^ ((u32)key[1]  << 16) ^ ((u32)key[2]  << 8) ^ ((u32)key[3]);
-		rk1 = ((u32)key[4]  << 24) ^ ((u32)key[5]  << 16) ^ ((u32)key[6]  << 8) ^ ((u32)key[7]);
-		rk2 = ((u32)key[8]  << 24) ^ ((u32)key[9]  << 16) ^ ((u32)key[10] << 8) ^ ((u32)key[11]);
-		rk3 = ((u32)key[12] << 24) ^ ((u32)key[13] << 16) ^ ((u32)key[14] << 8) ^ ((u32)key[15]);
-
 		rk3 += threadIndex * threadRange + rangeCount;
 		// TODO: overflow
 
-		printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
+		if (threadIndex == 0) {
+			printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
+		}
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = ((u32)pt[0]  << 24) | ((u32)pt[1]  << 16) | ((u32)pt[2]  << 8) | ((u32)pt[3]);
-		s1 = ((u32)pt[4]  << 24) | ((u32)pt[5]  << 16) | ((u32)pt[6]  << 8) | ((u32)pt[7]);
-		s2 = ((u32)pt[8]  << 24) | ((u32)pt[9]  << 16) | ((u32)pt[10] << 8) | ((u32)pt[11]);
-		s3 = ((u32)pt[12] << 24) | ((u32)pt[13] << 16) | ((u32)pt[14] << 8) | ((u32)pt[15]);
+		s0 = pt0;
+		s1 = pt1;
+		s2 = pt2;
+		s3 = pt3;
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -555,16 +595,12 @@ __global__ void exhaustiveSearch(u8* pt, u8* ct, u8* key, unsigned long int rang
 		s2 = s2 ^ rk2;
 		s3 = s3 ^ rk3;
 
-		//printf("--Round: %d\n", 0);
-		//printf("%08x\n", s0);
-		//printf("%08x\n", s1);
-		//printf("%08x\n", s2);
-		//printf("%08x\n", s3);
-		//printf("-- Round Key\n");
-		//printf("%08x\n", rk0);
-		//printf("%08x\n", rk1);
-		//printf("%08x\n", rk2);
-		//printf("%08x\n", rk3);
+		/*if (threadIndex == 0) {
+			printf("--Round: %d\n", 0);
+			printf("%08x%08x%08x%08x\n", threadIndex, s0, s1, s2, s3);
+			printf("-- Round Key\n");
+			printf("%08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
+		}*/
 
 		u32 t0, t1, t2, t3;
 		for (int roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
@@ -572,83 +608,48 @@ __global__ void exhaustiveSearch(u8* pt, u8* ct, u8* key, unsigned long int rang
 			// Calculate round key
 			u32 temp = rk3;
 			rk0 = rk0 ^
-				(T4[(temp >> 16) & 0xff] & 0xff000000) ^
-				(T4[(temp >> 8) & 0xff] & 0x00ff0000) ^
-				(T4[(temp) & 0xff] & 0x0000ff00) ^
-				(T4[(temp >> 24)] & 0x000000ff) ^
-				RCON32[roundCount - 1];
+				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+				(t4S[(temp >>  8) & 0xff] & 0x00ff0000) ^
+				(t4S[(temp      ) & 0xff] & 0x0000ff00) ^
+				(t4S[(temp >> 24)       ] & 0x000000ff) ^
+				rconS[roundCount - 1];
 			rk1 = rk1 ^ rk0;
 			rk2 = rk2 ^ rk1;
 			rk3 = rk2 ^ rk3;
 
 			// Tables based round function
-			t0 = T0[s0 >> 24] ^ T1[(s1 >> 16) & 0xFF] ^ T2[(s2 >> 8) & 0xFF] ^ T3[s3 & 0xFF] ^ rk0;
-			t1 = T0[s1 >> 24] ^ T1[(s2 >> 16) & 0xFF] ^ T2[(s3 >> 8) & 0xFF] ^ T3[s0 & 0xFF] ^ rk1;
-			t2 = T0[s2 >> 24] ^ T1[(s3 >> 16) & 0xFF] ^ T2[(s0 >> 8) & 0xFF] ^ T3[s1 & 0xFF] ^ rk2;
-			t3 = T0[s3 >> 24] ^ T1[(s0 >> 16) & 0xFF] ^ T2[(s1 >> 8) & 0xFF] ^ T3[s2 & 0xFF] ^ rk3;
+			t0 = t0S[s0 >> 24] ^ t1S[(s1 >> 16) & 0xFF] ^ t2S[(s2 >> 8) & 0xFF] ^ t3S[s3 & 0xFF] ^ rk0;
+			t1 = t0S[s1 >> 24] ^ t1S[(s2 >> 16) & 0xFF] ^ t2S[(s3 >> 8) & 0xFF] ^ t3S[s0 & 0xFF] ^ rk1;
+			t2 = t0S[s2 >> 24] ^ t1S[(s3 >> 16) & 0xFF] ^ t2S[(s0 >> 8) & 0xFF] ^ t3S[s1 & 0xFF] ^ rk2;
+			t3 = t0S[s3 >> 24] ^ t1S[(s0 >> 16) & 0xFF] ^ t2S[(s1 >> 8) & 0xFF] ^ t3S[s2 & 0xFF] ^ rk3;
 
 			s0 = t0;
 			s1 = t1;
 			s2 = t2;
 			s3 = t3;
-
-			//printf("-- Round: %d\n", roundCount);
-			//printf("%08x\n", s0);
-			//printf("%08x\n", s1);
-			//printf("%08x\n", s2);
-			//printf("%08x\n", s3);
-			//printf("-- Round Key\n");
-			//printf("%08x\n", rk0);
-			//printf("%08x\n", rk1);
-			//printf("%08x\n", rk2);
-			//printf("%08x\n", rk3);
 		}
 
 		// Calculate the last round key
 		u32 temp = rk3;
 		rk0 = rk0 ^
-			(T4[(temp >> 16) & 0xff] & 0xff000000) ^
-			(T4[(temp >> 8) & 0xff] & 0x00ff0000) ^
-			(T4[(temp) & 0xff] & 0x0000ff00) ^
-			(T4[(temp >> 24)] & 0x000000ff) ^
-			RCON32[ROUND_COUNT - 1];
-		rk1 = rk1 ^ rk0;
-		rk2 = rk2 ^ rk1;
-		rk3 = rk2 ^ rk3;
-
+			(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+			(t4S[(temp >>  8) & 0xff] & 0x00ff0000) ^
+			(t4S[(temp      ) & 0xff] & 0x0000ff00) ^
+			(t4S[(temp >> 24)       ] & 0x000000ff) ^
+			rconS[ROUND_COUNT - 1];
+		
 		// Last round uses s-box directly and XORs to produce output.
-		s0 = (T4[t0 >> 24] & 0xFF000000) ^ (T4[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t3) & 0xFF] & 0x000000FF) ^ rk0;
-		s1 = (T4[t1 >> 24] & 0xFF000000) ^ (T4[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t0) & 0xFF] & 0x000000FF) ^ rk1;
-		s2 = (T4[t2 >> 24] & 0xFF000000) ^ (T4[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t1) & 0xFF] & 0x000000FF) ^ rk2;
-		s3 = (T4[t3 >> 24] & 0xFF000000) ^ (T4[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (T4[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (T4[(t2) & 0xFF] & 0x000000FF) ^ rk3;
-
-		//printf("-- Round: %d\n", 10);
-		//printf("%08x\n", s0);
-		//printf("%08x\n", s1);
-		//printf("%08x\n", s2);
-		//printf("%08x\n", s3);
-		//printf("-- Round Key\n");
-		//printf("%08x\n", rk0);
-		//printf("%08x\n", rk1);
-		//printf("%08x\n", rk2);
-		//printf("%08x\n", rk3);
-		//printf("------------\n");
-
-		// Check if final ciphertext matches the given ciphertext
-		t0 = ((u32)ct[0] << 24) | ((u32)ct[1] << 16) | ((u32)ct[2] << 8) | ((u32)ct[3]);
-		if (s0 == t0) {
-			t1 = ((u32)ct[4] << 24) | ((u32)ct[5] << 16) | ((u32)ct[6] << 8) | ((u32)ct[7]);
-			if (s1 == t1) {
-				t2 = ((u32)ct[8] << 24) | ((u32)ct[9] << 16) | ((u32)ct[10] << 8) | ((u32)ct[11]);
-				if (s2 == t2) {
-					t3 = ((u32)ct[12] << 24) | ((u32)ct[13] << 16) | ((u32)ct[14] << 8) | ((u32)ct[15]);
-					if (s3 == t3) {
-						// Key is found in exhaustive search 
-						rk0 = ((u32)key[0]  << 24) ^ ((u32)key[1]  << 16) ^ ((u32)key[2]  << 8) ^ ((u32)key[3]);
-						rk1 = ((u32)key[4]  << 24) ^ ((u32)key[5]  << 16) ^ ((u32)key[6]  << 8) ^ ((u32)key[7]);
-						rk2 = ((u32)key[8]  << 24) ^ ((u32)key[9]  << 16) ^ ((u32)key[10] << 8) ^ ((u32)key[11]);
-						rk3 = ((u32)key[12] << 24) ^ ((u32)key[13] << 16) ^ ((u32)key[14] << 8) ^ ((u32)key[15]);
-						// Print key
+		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
+		if (s0 == ct0) {
+			rk1 = rk1 ^ rk0;
+			s1 = (t4S[t1 >> 24] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t0) & 0xFF] & 0x000000FF) ^ rk1;
+			if (s1 == ct1) {
+				rk2 = rk2 ^ rk1;
+				s2 = (t4S[t2 >> 24] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t1) & 0xFF] & 0x000000FF) ^ rk2;
+				if (s2 == ct2) {
+					rk3 = rk2 ^ rk3;
+					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
+					if (s3 == ct3) {
 						printf("! %d Found key: %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
 					}
 				}
@@ -658,89 +659,70 @@ __global__ void exhaustiveSearch(u8* pt, u8* ct, u8* key, unsigned long int rang
 }
 
 int main() {
+	
+	// Key
+	u32 rk0 = 0x2B7E1516U;
+	u32 rk1 = 0x28AED2A6U;
+	u32 rk2 = 0xABF71588U;
+	u32 rk3 = 0x09CF4F3CU;
+	// Plaintext
+	u32 pt0 = 0x3243F6A8U;
+	u32 pt1 = 0x885A308DU;
+	u32 pt2 = 0x313198A2U;
+	u32 pt3 = 0xE0370734U;
+	// Ciphertext
+	u32 ct0 = 0x3925841DU;
+	u32 ct1 = 0x02DC09FBU;
+	u32 ct2 = 0xDC118597U;
+	u32 ct3 = 0x196A0B32U;
 
-	u8* key;//[16] = { 0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C };
-	u8* plainText;//[16] = { 0x32, 0x43, 0xF6, 0xA8, 0x88, 0x5A, 0x30, 0x8D, 0x31, 0x31, 0x98, 0xA2, 0xE0, 0x37, 0x07, 0x34 };
-	u8* cipherText;//[16] = { 0x39, 0x25, 0x84, 0x1D, 0x02, 0xDC, 0x09, 0xFB, 0xDC, 0x11, 0x85, 0x97, 0x19, 0x6A, 0x0B, 0x32 };
+	// Allocate S-BOX
+	u8* sBox;
+	gpuErrorCheck(cudaMallocManaged(&sBox, TABLE_SIZE * sizeof(u8)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		sBox[i] = S_BOX[i];
+	}
+	
+	// Allocate Tables
+	u32* t0;
+	gpuErrorCheck(cudaMallocManaged(&t0, TABLE_SIZE * sizeof(u32)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		t0[i] = T0[i];
+	}
+	u32* t1;
+	gpuErrorCheck(cudaMallocManaged(&t1, TABLE_SIZE * sizeof(u32)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		t1[i] = T1[i];
+	}
+	u32* t2;
+	gpuErrorCheck(cudaMallocManaged(&t2, TABLE_SIZE * sizeof(u32)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		t2[i] = T2[i];
+	}
+	u32* t3;
+	gpuErrorCheck(cudaMallocManaged(&t3, TABLE_SIZE * sizeof(u32)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		t3[i] = T3[i];
+	}
+	u32* t4;
+	gpuErrorCheck(cudaMallocManaged(&t4, TABLE_SIZE * sizeof(u32)));
+	for (int i = 0; i < TABLE_SIZE; i++) {
+		t4[i] = T4[i];
+	}
+	u32* rcon;
+	gpuErrorCheck(cudaMallocManaged(&rcon, 10 * sizeof(u32)));
+	for (int i = 0; i < 10; i++) {
+		rcon[i] = RCON32[i];
+	}
 
-	cudaMallocManaged(&key, 16 * sizeof(u8));
-	key[0] = 0x2B;
-	key[1] = 0x7E;
-	key[2] = 0x15;
-	key[3] = 0x16;
-	key[4] = 0x28;
-	key[5] = 0xAE;
-	key[6] = 0xD2;
-	key[7] = 0xA6;
-	key[8] = 0xAB;
-	key[9] = 0xF7;
-	key[10] = 0x15;
-	key[11] = 0x88;
-	key[12] = 0x09;
-	key[13] = 0xCF;
-	key[14] = 0x4F;
-	key[15] = 0x3C;
 
-	cudaMallocManaged(&plainText, 16 * sizeof(u8));
-	plainText[0] = 0x32;
-	plainText[1] = 0x43;
-	plainText[2] = 0xF6;
-	plainText[3] = 0xA8;
-	plainText[4] = 0x88;
-	plainText[5] = 0x5A;
-	plainText[6] = 0x30;
-	plainText[7] = 0x8D;
-	plainText[8] = 0x31;
-	plainText[9] = 0x31;
-	plainText[10] = 0x98;
-	plainText[11] = 0xA2;
-	plainText[12] = 0xE0;
-	plainText[13] = 0x37;
-	plainText[14] = 0x07;
-	plainText[15] = 0x34;
-
-	cudaMallocManaged(&cipherText, 16 * sizeof(u8));
-	cipherText[0] = 0x39;
-	cipherText[1] = 0x25;
-	cipherText[2] = 0x84;
-	cipherText[3] = 0x1D;
-	cipherText[4] = 0x02;
-	cipherText[5] = 0xDC;
-	cipherText[6] = 0x09;
-	cipherText[7] = 0xFB;
-	cipherText[8] = 0xDC;
-	cipherText[9] = 0x11;
-	cipherText[10] = 0x85;
-	cipherText[11] = 0x97;
-	cipherText[12] = 0x19;
-	cipherText[13] = 0x6A;
-	cipherText[14] = 0x0B;
-	cipherText[15] = 0x32;
-
+	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
-	exhaustiveSearch<<<BLOCKS, THREADS>>>(plainText, cipherText, key, (unsigned long int) pow(2, 5));
-
-
+	exhaustiveSearch<<<BLOCKS, THREADS>>>(pt0, pt1, pt2, pt3, ct0, ct1, ct2, ct3, rk0, rk1, rk2, rk3, t0, t1, t2, t3, t4, rcon, sBox, (unsigned long int) pow(2, 27));
+	
 	cudaDeviceSynchronize();
+	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 
-	cudaFree(key);
-	cudaFree(plainText);
-	cudaFree(cipherText);
-	//cudaDeviceReset();
-
+	cudaFree(sBox);
 	return 0;
 }
-
-
-
-void printIntAsHex(u32 s0) {
-	printf("%08x\n", s0);
-}
-
-//inline void cudaDevAssist(cudaError_t code, int line, bool abort = true)
-//{
-//	if (code != cudaSuccess) {
-//		fprintf(stderr, "cudaDevAssistant: %s %d\n", cudaGetErrorString(code), line);
-//		if (abort) exit(code);
-//	}
-//}
