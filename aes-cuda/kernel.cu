@@ -18,12 +18,13 @@ typedef unsigned char			u8;
 typedef unsigned short			u16;
 typedef unsigned int			u32;
 typedef unsigned long int		uli;
+typedef unsigned long long	    ull;
 typedef unsigned long long int	ulli;
 
-
-#define BLOCKS							32
-#define THREADS							640
-#define THREAD_COUNT					BLOCKS * THREADS
+__device__ ull rk3Max = 0; 
+__device__ ull totalThreadCount = 0;
+__device__ ull totalEncryptions = 0;
+__device__ ull maxThreadIndex = 0;
 
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
 #define TABLE_SIZE						256
@@ -379,7 +380,6 @@ u32 T4[TABLE_SIZE] = {
 	0x41414141U, 0x99999999U, 0x2d2d2d2dU, 0x0f0f0f0fU,
 	0xb0b0b0b0U, 0x54545454U, 0xbbbbbbbbU, 0x16161616U,
 };
-/* for 128-bit blocks, Rijndael never uses more than 10 rcon values */
 u32 RCON32[10] = {
 	0x01000000, 0x02000000, 0x04000000, 0x08000000,
 	0x10000000, 0x20000000, 0x40000000, 0x80000000,
@@ -541,7 +541,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 
 __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG, uli* range) {
 
-	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	ulli threadIndex = (ulli) blockIdx.x * blockDim.x + threadIdx.x;
 	
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE];
@@ -559,6 +559,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 
 	if (threadIndex == 0) {
 		threadRange = *range;
+		printf("threadRange: %lu\n", threadRange);
 	}
 	if (threadIndex < TABLE_SIZE) {
 		t0S[threadIndex] = t0G[threadIndex];
@@ -577,24 +578,44 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	}
 	// </SHARED MEMORY>
 
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+
 	// Wait until every thread is ready
 	__syncthreads();
 
+	if (threadIndex == 20479) {
+		printf("threadIndex: %d\n", threadIndex);
+	}
+
 	for (uli rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+
+		if (threadIndex == 20479) {
+			printf("threadIndex: %d\n", threadIndex);
+		}
+
+
+		if (threadIndex == 0) {
+			atomicAdd(&rk3Max, 1);
+		}
+
+		atomicAdd(&totalEncryptions, 1);
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rkS[0];
 		rk1 = rkS[1];
 		rk2 = rkS[2];
 		rk3 = rkS[3];
-		
+
 		// Create key as 32 bit unsigned integers
 		rk3 += threadIndex * threadRange + rangeCount;
 		// TODO: overflow
 
-		//if (threadIndex == 1 && rangeCount < 10) {
+		
+
+		//if (threadIndex == 0 && rangeCount < 10) {
 		//	printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
-		//	printf("Thread Range: %lu\n", threadRange);
 		//}
 
 		// Create plaintext as 32 bit unsigned integers
@@ -671,6 +692,10 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 			}
 		}
 	}
+
+	if (threadIndex == 20479) {
+		printf("11threadIndex: %d\n", threadIndex);
+	}
 }
 
 int main() {
@@ -678,10 +703,10 @@ int main() {
 	// Allocate key
 	u32* rk;
 	gpuErrorCheck(cudaMallocManaged(&rk, TABLE_SIZE * sizeof(u32)));
-	rk[0] = 0x2B7E1516U;
-	rk[1] = 0x28AED2A6U;
-	rk[2] = 0xABF71588U;
-	rk[3] = 0x09CF4F3CU;
+	rk[0] = 0x00000000U;
+	rk[1] = 0x00000000U;
+	rk[2] = 0x00000000U;
+	rk[3] = 0x00000000U;
 	// Allocate plaintext
 	u32* pt;
 	gpuErrorCheck(cudaMallocManaged(&pt, TABLE_SIZE * sizeof(u32)));
@@ -738,18 +763,45 @@ int main() {
 
 	uli* range;
 	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(uli)));
-	*range = (uli) pow(2, 28) / (THREAD_COUNT);
-	printf("Key Range: %lu\n", (uli) pow(2, 31));
-	printf("Thread count: %d\n", (THREAD_COUNT));
-	printf("Thread range: %lu\n", *range);
+	int blocks = 32;
+	int threads = 640;
+	int threadCount = threads;
+	int twoPowerRange = 22;
+	double keyRange = pow(2, twoPowerRange);
+	double threadRange = keyRange / threadCount;
+	range[0] = ceil(threadRange);
 
+	printf("------------------------------------\n");
+	printf("Blocks                             : %d\n", blocks);
+	printf("Threads                            : %d\n", threads);
+	printf("Total Thread count                 : %d\n", threadCount);
+	printf("Key Range (power)                  : %d\n", twoPowerRange);
+	printf("Key Range (decimal)                : %.0f\n", keyRange);
+	printf("Each Thread Key Range              : %.2f\n", threadRange);
+	printf("Each Thread Key Range (kernel)     : %lu\n", range[0]);
+	printf("Total encryptions                  : %lu\n", range[0] * threadCount);
+	printf("------------------------------------\n");
 
 	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
-	exhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, range);
+	exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, range);
 	
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
+
+	
+	printf("------------------------------------\n");
+	ull total;
+	cudaMemcpyFromSymbol(&total, totalThreadCount, sizeof(ull));
+	printf("Total Thread count                 : %lu\n", total);
+	cudaMemcpyFromSymbol(&total, maxThreadIndex, sizeof(ull));
+	printf("Max thread index                   : %lu\n", total);
+	cudaMemcpyFromSymbol(&total, rk3Max, sizeof(ull));
+	printf("Each Thread Key Range              : %lu\n", total);
+	cudaMemcpyFromSymbol(&total, totalEncryptions, sizeof(ull));
+	printf("Total encryptions                  : %lu\n", total);
+	printf("------------------------------------\n");
+
 
 	cudaFree(rk);
 	cudaFree(pt);
