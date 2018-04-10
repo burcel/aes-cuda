@@ -21,10 +21,15 @@ typedef unsigned long int		uli;
 typedef unsigned long long	    ull;
 typedef unsigned long long int	ulli;
 
-__device__ ull rk3Max = 0; 
-__device__ ull totalThreadCount = 0;
-__device__ ull totalEncryptions = 0;
-__device__ ull maxThreadIndex = 0;
+
+//#define INFO 1
+#ifdef  INFO
+__device__ u32 rk3Max = 0;
+__device__ u32 rk3TotalMax = 0;
+__device__ u32 totalThreadCount = 0;
+__device__ u32 totalEncryptions = 0;
+__device__ u32 maxThreadIndex = 0;
+#endif // INFO
 
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
 #define TABLE_SIZE						256
@@ -539,10 +544,10 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 //	//cipherText[15] = s3 & 0xff;
 //}
 
-__global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG, uli* range) {
+__global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG, u32* range) {
 
-	ulli threadIndex = (ulli) blockIdx.x * blockDim.x + threadIdx.x;
-	
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE];
 	__shared__ u32 t1S[TABLE_SIZE];
@@ -554,12 +559,10 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	__shared__ u32 ctS[4];
 	__shared__ u32 rkS[4];
 
-	__shared__ uli threadRange;
-	//__shared__ uli rangeCount;
+	__shared__ u32 threadRange;
 
 	if (threadIndex == 0) {
 		threadRange = *range;
-		printf("threadRange: %lu\n", threadRange);
 	}
 	if (threadIndex < TABLE_SIZE) {
 		t0S[threadIndex] = t0G[threadIndex];
@@ -578,29 +581,15 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
 	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
 
 	// Wait until every thread is ready
 	__syncthreads();
 
-	if (threadIndex == 20479) {
-		printf("threadIndex: %d\n", threadIndex);
-	}
-
-	for (uli rangeCount = 0; rangeCount < threadRange; rangeCount++) {
-
-
-		if (threadIndex == 20479) {
-			printf("threadIndex: %d\n", threadIndex);
-		}
-
-
-		if (threadIndex == 0) {
-			atomicAdd(&rk3Max, 1);
-		}
-
-		atomicAdd(&totalEncryptions, 1);
+	for (int rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rkS[0];
@@ -612,11 +601,13 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		rk3 += threadIndex * threadRange + rangeCount;
 		// TODO: overflow
 
-		
-
-		//if (threadIndex == 0 && rangeCount < 10) {
-		//	printf("Trying key: %d %08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
-		//}
+		#ifdef  INFO
+		if (threadIndex == 0) {
+			atomicAdd(&rk3Max, 1);
+		}
+		atomicAdd(&totalEncryptions, 1);
+		atomicMax(&rk3TotalMax, rk3);
+		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -639,7 +630,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		}*/
 
 		u32 t0, t1, t2, t3;
-		for (int roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+		for (u32 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
 
 			// Calculate round key
 			u32 temp = rk3;
@@ -665,6 +656,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 			s3 = t3;
 		}
 
+		#ifdef  INFO
 		// Calculate the last round key
 		u32 temp = rk3;
 		rk0 = rk0 ^
@@ -673,7 +665,6 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 			(t4S[(temp      ) & 0xff] & 0x0000ff00) ^
 			(t4S[(temp >> 24)       ] & 0x000000ff) ^
 			rconS[ROUND_COUNT - 1];
-		
 		// Last round uses s-box directly and XORs to produce output.
 		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
 		if (s0 == ctS[0]) {
@@ -686,15 +677,13 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! %d Found key: %08x%08x%08x%08x Range count: %lu\n", threadIndex, rk0, rk1, rk2, rk3, rangeCount);
+						printf("! FOUND KEY\n");
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadIndex * threadRange + rangeCount);
 					}
 				}
 			}
 		}
-	}
-
-	if (threadIndex == 20479) {
-		printf("11threadIndex: %d\n", threadIndex);
+		#endif // INFO
 	}
 }
 
@@ -702,25 +691,29 @@ int main() {
 
 	// Allocate key
 	u32* rk;
-	gpuErrorCheck(cudaMallocManaged(&rk, TABLE_SIZE * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
+	//rk[0] = 0x2B7E1516U;
+	//rk[1] = 0x28AED2A6U;
+	//rk[2] = 0xABF71588U;
+	//rk[3] = 0x09CF4F3CU;
 	rk[0] = 0x00000000U;
 	rk[1] = 0x00000000U;
 	rk[2] = 0x00000000U;
 	rk[3] = 0x00000000U;
 	// Allocate plaintext
 	u32* pt;
-	gpuErrorCheck(cudaMallocManaged(&pt, TABLE_SIZE * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
 	pt[0] = 0x3243F6A8U;
 	pt[1] = 0x885A308DU;
 	pt[2] = 0x313198A2U;
 	pt[3] = 0xE0370734U;
 	// Allocate ciphertext
 	u32* ct;
-	gpuErrorCheck(cudaMallocManaged(&ct, TABLE_SIZE * sizeof(u32)));
-	ct[0] = 0x3925841DU;
-	ct[1] = 0x02DC09FBU;
-	ct[2] = 0xDC118597U;
-	ct[3] = 0x196A0B32U;
+	gpuErrorCheck(cudaMallocManaged(&ct, 4 * sizeof(u32)));
+	ct[0] = 0x4390c373U;
+	ct[1] = 0xd11979acU;
+	ct[2] = 0x6236104cU;
+	ct[3] = 0xa3d85b88U;
 
 	// Allocate S-BOX
 	u8* sBox;
@@ -761,10 +754,10 @@ int main() {
 		rcon[i] = RCON32[i];
 	}
 
-	uli* range;
-	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(uli)));
+	u32* range;
+	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(u32)));
 	int blocks = 32;
-	int threads = 640;
+	int threads = 1024;
 	int threadCount = threads;
 	int twoPowerRange = 22;
 	double keyRange = pow(2, twoPowerRange);
@@ -778,8 +771,12 @@ int main() {
 	printf("Key Range (power)                  : %d\n", twoPowerRange);
 	printf("Key Range (decimal)                : %.0f\n", keyRange);
 	printf("Each Thread Key Range              : %.2f\n", threadRange);
-	printf("Each Thread Key Range (kernel)     : %lu\n", range[0]);
-	printf("Total encryptions                  : %lu\n", range[0] * threadCount);
+	printf("Each Thread Key Range (kernel)     : %d\n", range[0]);
+	printf("Total encryptions                  : %d\n", range[0] * threadCount);
+	printf("------------------------------------\n");
+	printf("Initial Key                        : %08x%08x%08x%08x\n", rk[0], rk[1], rk[2], rk[3]);
+	printf("Plaintext                          : %08x%08x%08x%08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Ciphertext                         : %08x%08x%08x%08x\n", ct[0], ct[1], ct[2], ct[3]);
 	printf("------------------------------------\n");
 
 	clock_t beginTime = clock();
@@ -789,18 +786,21 @@ int main() {
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 
-	
+	#ifdef  INFO
 	printf("------------------------------------\n");
-	ull total;
-	cudaMemcpyFromSymbol(&total, totalThreadCount, sizeof(ull));
+	u32 total;
+	cudaMemcpyFromSymbol(&total, totalThreadCount, sizeof(u32));
 	printf("Total Thread count                 : %lu\n", total);
-	cudaMemcpyFromSymbol(&total, maxThreadIndex, sizeof(ull));
+	cudaMemcpyFromSymbol(&total, maxThreadIndex, sizeof(u32));
 	printf("Max thread index                   : %lu\n", total);
-	cudaMemcpyFromSymbol(&total, rk3Max, sizeof(ull));
+	cudaMemcpyFromSymbol(&total, rk3Max, sizeof(u32));
 	printf("Each Thread Key Range              : %lu\n", total);
-	cudaMemcpyFromSymbol(&total, totalEncryptions, sizeof(ull));
+	cudaMemcpyFromSymbol(&total, rk3TotalMax, sizeof(u32));
+	printf("Total Thread Key Range             : %lu\n", total);
+	cudaMemcpyFromSymbol(&total, totalEncryptions, sizeof(u32));
 	printf("Total encryptions                  : %lu\n", total);
 	printf("------------------------------------\n");
+	#endif // INFO
 
 
 	cudaFree(rk);
