@@ -22,7 +22,7 @@ typedef unsigned long long	    ull;
 typedef unsigned long long int	ulli;
 
 
-//#define INFO 1
+#define INFO 1
 #ifdef  INFO
 __device__ u32 rk3Max = 0;
 __device__ u32 rk3TotalMax = 0;
@@ -36,23 +36,71 @@ __device__ u32 maxThreadIndex = 0;
 #define ROUND_COUNT						10
 #define BYTE_COUNT						16  // 128 / 8
 
-u8 S_BOX[TABLE_SIZE] = {
-	0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
-	0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
-	0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
-	0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x75,
-	0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84,
-	0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF,
-	0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA8,
-	0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2,
-	0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73,
-	0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xDB,
-	0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79,
-	0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08,
-	0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8A,
-	0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E,
-	0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF,
-	0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
+u32 SBOX[TABLE_SIZE] = {
+	0x63000000U, 0x7C000000U, 0x77000000U, 0x7B000000U,
+	0xF2000000U, 0x6B000000U, 0x6F000000U, 0xC5000000U,
+	0x30000000U, 0x01000000U, 0x67000000U, 0x2B000000U,
+	0xFE000000U, 0xD7000000U, 0xAB000000U, 0x76000000U,
+	0xCA000000U, 0x82000000U, 0xC9000000U, 0x7D000000U,
+	0xFA000000U, 0x59000000U, 0x47000000U, 0xF0000000U,
+	0xAD000000U, 0xD4000000U, 0xA2000000U, 0xAF000000U,
+	0x9C000000U, 0xA4000000U, 0x72000000U, 0xC0000000U,
+	0xB7000000U, 0xFD000000U, 0x93000000U, 0x26000000U,
+	0x36000000U, 0x3F000000U, 0xF7000000U, 0xCC000000U,
+	0x34000000U, 0xA5000000U, 0xE5000000U, 0xF1000000U,
+	0x71000000U, 0xD8000000U, 0x31000000U, 0x15000000U,
+	0x04000000U, 0xC7000000U, 0x23000000U, 0xC3000000U,
+	0x18000000U, 0x96000000U, 0x05000000U, 0x9A000000U,
+	0x07000000U, 0x12000000U, 0x80000000U, 0xE2000000U,
+	0xEB000000U, 0x27000000U, 0xB2000000U, 0x75000000U,
+	0x09000000U, 0x83000000U, 0x2C000000U, 0x1A000000U,
+	0x1B000000U, 0x6E000000U, 0x5A000000U, 0xA0000000U,
+	0x52000000U, 0x3B000000U, 0xD6000000U, 0xB3000000U,
+	0x29000000U, 0xE3000000U, 0x2F000000U, 0x84000000U,
+	0x53000000U, 0xD1000000U, 0x00000000U, 0xED000000U,
+	0x20000000U, 0xFC000000U, 0xB1000000U, 0x5B000000U,
+	0x6A000000U, 0xCB000000U, 0xBE000000U, 0x39000000U,
+	0x4A000000U, 0x4C000000U, 0x58000000U, 0xCF000000U,
+	0xD0000000U, 0xEF000000U, 0xAA000000U, 0xFB000000U,
+	0x43000000U, 0x4D000000U, 0x33000000U, 0x85000000U,
+	0x45000000U, 0xF9000000U, 0x02000000U, 0x7F000000U,
+	0x50000000U, 0x3C000000U, 0x9F000000U, 0xA8000000U,
+	0x51000000U, 0xA3000000U, 0x40000000U, 0x8F000000U,
+	0x92000000U, 0x9D000000U, 0x38000000U, 0xF5000000U,
+	0xBC000000U, 0xB6000000U, 0xDA000000U, 0x21000000U,
+	0x10000000U, 0xFF000000U, 0xF3000000U, 0xD2000000U,
+	0xCD000000U, 0x0C000000U, 0x13000000U, 0xEC000000U,
+	0x5F000000U, 0x97000000U, 0x44000000U, 0x17000000U,
+	0xC4000000U, 0xA7000000U, 0x7E000000U, 0x3D000000U,
+	0x64000000U, 0x5D000000U, 0x19000000U, 0x73000000U,
+	0x60000000U, 0x81000000U, 0x4F000000U, 0xDC000000U,
+	0x22000000U, 0x2A000000U, 0x90000000U, 0x88000000U,
+	0x46000000U, 0xEE000000U, 0xB8000000U, 0x14000000U,
+	0xDE000000U, 0x5E000000U, 0x0B000000U, 0xDB000000U,
+	0xE0000000U, 0x32000000U, 0x3A000000U, 0x0A000000U,
+	0x49000000U, 0x06000000U, 0x24000000U, 0x5C000000U,
+	0xC2000000U, 0xD3000000U, 0xAC000000U, 0x62000000U,
+	0x91000000U, 0x95000000U, 0xE4000000U, 0x79000000U,
+	0xE7000000U, 0xC8000000U, 0x37000000U, 0x6D000000U,
+	0x8D000000U, 0xD5000000U, 0x4E000000U, 0xA9000000U,
+	0x6C000000U, 0x56000000U, 0xF4000000U, 0xEA000000U,
+	0x65000000U, 0x7A000000U, 0xAE000000U, 0x08000000U,
+	0xBA000000U, 0x78000000U, 0x25000000U, 0x2E000000U,
+	0x1C000000U, 0xA6000000U, 0xB4000000U, 0xC6000000U,
+	0xE8000000U, 0xDD000000U, 0x74000000U, 0x1F000000U,
+	0x4B000000U, 0xBD000000U, 0x8B000000U, 0x8A000000U,
+	0x70000000U, 0x3E000000U, 0xB5000000U, 0x66000000U,
+	0x48000000U, 0x03000000U, 0xF6000000U, 0x0E000000U,
+	0x61000000U, 0x35000000U, 0x57000000U, 0xB9000000U,
+	0x86000000U, 0xC1000000U, 0x1D000000U, 0x9E000000U,
+	0xE1000000U, 0xF8000000U, 0x98000000U, 0x11000000U,
+	0x69000000U, 0xD9000000U, 0x8E000000U, 0x94000000U,
+	0x9B000000U, 0x1E000000U, 0x87000000U, 0xE9000000U,
+	0xCE000000U, 0x55000000U, 0x28000000U, 0xDF000000U,
+	0x8C000000U, 0xA1000000U, 0x89000000U, 0x0D000000U,
+	0xBF000000U, 0xE6000000U, 0x42000000U, 0x68000000U,
+	0x41000000U, 0x99000000U, 0x2D000000U, 0x0F000000U,
+	0xB0000000U, 0x54000000U, 0xBB000000U, 0x16000000U
 };
 u32 T0[TABLE_SIZE] = {
 	0xc66363a5U, 0xf87c7c84U, 0xee777799U, 0xf67b7b8dU,
@@ -544,7 +592,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 //	//cipherText[15] = s3 & 0xff;
 //}
 
-__global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u8* sBoxG, u32* range) {
+__global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u32* sBoxG, u32* range) {
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -554,11 +602,12 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	__shared__ u32 t2S[TABLE_SIZE];
 	__shared__ u32 t3S[TABLE_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
+	__shared__ u32 sBoxS[TABLE_SIZE];
 	__shared__ u32 rconS[10];
 	__shared__ u32 ptS[4];
 	__shared__ u32 ctS[4];
 	__shared__ u32 rkS[4];
-
+	
 	__shared__ u32 threadRange;
 
 	if (threadIndex == 0) {
@@ -570,6 +619,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		t2S[threadIndex] = t2G[threadIndex];
 		t3S[threadIndex] = t3G[threadIndex];
 		t4S[threadIndex] = t4G[threadIndex];
+		sBoxS[threadIndex] = sBoxG[threadIndex];
 	}
 	if (threadIndex < 10) {
 		rconS[threadIndex] = rconG[threadIndex];
@@ -589,7 +639,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	// Wait until every thread is ready
 	__syncthreads();
 
-	for (int rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rkS[0];
@@ -622,18 +672,19 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		s2 = s2 ^ rk2;
 		s3 = s3 ^ rk3;
 
-		/*if (threadIndex == 0) {
-			printf("--Round: %d\n", 0);
-			printf("%08x%08x%08x%08x\n", threadIndex, s0, s1, s2, s3);
-			printf("-- Round Key\n");
-			printf("%08x%08x%08x%08x\n", threadIndex, rk0, rk1, rk2, rk3);
-		}*/
+		//if (threadIndex == 0 && rangeCount == 0) {
+		//	printf("--Round: %d\n", 0);
+		//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
+		//	printf("-- Round Key\n");
+		//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
+		//}
 
 		u32 t0, t1, t2, t3;
-		for (u32 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+		for (u8 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
 
 			// Calculate round key
 			u32 temp = rk3;
+			// TODO: temp & 0xff000000
 			rk0 = rk0 ^
 				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
 				(t4S[(temp >>  8) & 0xff] & 0x00ff0000) ^
@@ -644,7 +695,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 			rk2 = rk2 ^ rk1;
 			rk3 = rk2 ^ rk3;
 
-			// Tables based round function
+			// Table based round function
 			t0 = t0S[s0 >> 24] ^ t1S[(s1 >> 16) & 0xFF] ^ t2S[(s2 >> 8) & 0xFF] ^ t3S[s3 & 0xFF] ^ rk0;
 			t1 = t0S[s1 >> 24] ^ t1S[(s2 >> 16) & 0xFF] ^ t2S[(s3 >> 8) & 0xFF] ^ t3S[s0 & 0xFF] ^ rk1;
 			t2 = t0S[s2 >> 24] ^ t1S[(s3 >> 16) & 0xFF] ^ t2S[(s0 >> 8) & 0xFF] ^ t3S[s1 & 0xFF] ^ rk2;
@@ -654,6 +705,13 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 			s1 = t1;
 			s2 = t2;
 			s3 = t3;
+
+			//if (threadIndex == 0 && rangeCount == 0) {
+			//	printf("--Round: %d\n", roundCount);
+			//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
+			//	printf("-- Round Key\n");
+			//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
+			//}
 		}
 
 		#ifdef  INFO
@@ -679,6 +737,157 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
 						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadIndex * threadRange + rangeCount);
+					}
+				}
+			}
+		}
+		#endif // INFO
+	}
+}
+
+__global__ void exhaustiveSearchWithAtomic(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u32* sBoxG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[TABLE_SIZE];
+	__shared__ u32 t1S[TABLE_SIZE];
+	__shared__ u32 t2S[TABLE_SIZE];
+	__shared__ u32 t3S[TABLE_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE];
+	__shared__ u32 sBoxS[TABLE_SIZE];
+	__shared__ u32 rconS[10];
+	__shared__ u32 ptS[4];
+	__shared__ u32 ctS[4];
+	__shared__ u32 rkS[4];
+
+	__shared__ u32 maxRange;
+
+	if (threadIndex < TABLE_SIZE) {
+		t0S[threadIndex] = t0G[threadIndex];
+		t1S[threadIndex] = t1G[threadIndex];
+		t2S[threadIndex] = t2G[threadIndex];
+		t3S[threadIndex] = t3G[threadIndex];
+		t4S[threadIndex] = t4G[threadIndex];
+		sBoxS[threadIndex] = sBoxG[threadIndex];
+	}
+	if (threadIndex < 10) {
+		rconS[threadIndex] = rconG[threadIndex];
+	}
+	if (threadIndex < 4) {
+		ptS[threadIndex] = pt[threadIndex];
+		ctS[threadIndex] = ct[threadIndex];
+		rkS[threadIndex] = rk[threadIndex];
+	}
+	if (threadIndex == 0) {
+		maxRange = *range;
+	}
+	// </SHARED MEMORY>
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	for (;;) {
+
+		u32 rk0, rk1, rk2, rk3, rk4;
+		rk0 = rkS[0];
+		rk1 = rkS[1];
+		rk2 = rkS[2];
+		rk3 = atomicAdd(&rkS[3], 1) + 1;
+		rk4 = rk3;
+
+		if (rk3 > maxRange) {
+			break;
+		}
+
+		#ifdef  INFO
+		atomicMax(&rk3TotalMax, rk3);
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		// Create plaintext as 32 bit unsigned integers
+		u32 s0, s1, s2, s3;
+		s0 = ptS[0];
+		s1 = ptS[1];
+		s2 = ptS[2];
+		s3 = ptS[3];
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rk0;
+		s1 = s1 ^ rk1;
+		s2 = s2 ^ rk2;
+		s3 = s3 ^ rk3;
+
+		//if (threadIndex == 0 && rangeCount == 0) {
+		//	printf("--Round: %d\n", 0);
+		//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
+		//	printf("-- Round Key\n");
+		//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
+		//}
+
+		u32 t0, t1, t2, t3;
+		for (u8 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+
+			// Calculate round key
+			u32 temp = rk3;
+			// TODO: temp & 0xff000000
+			rk0 = rk0 ^
+				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+				(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+				(t4S[(temp) & 0xff] & 0x0000ff00) ^
+				(t4S[(temp >> 24)] & 0x000000ff) ^
+				rconS[roundCount - 1];
+			rk1 = rk1 ^ rk0;
+			rk2 = rk2 ^ rk1;
+			rk3 = rk2 ^ rk3;
+
+			// Table based round function
+			t0 = t0S[s0 >> 24] ^ t1S[(s1 >> 16) & 0xFF] ^ t2S[(s2 >> 8) & 0xFF] ^ t3S[s3 & 0xFF] ^ rk0;
+			t1 = t0S[s1 >> 24] ^ t1S[(s2 >> 16) & 0xFF] ^ t2S[(s3 >> 8) & 0xFF] ^ t3S[s0 & 0xFF] ^ rk1;
+			t2 = t0S[s2 >> 24] ^ t1S[(s3 >> 16) & 0xFF] ^ t2S[(s0 >> 8) & 0xFF] ^ t3S[s1 & 0xFF] ^ rk2;
+			t3 = t0S[s3 >> 24] ^ t1S[(s0 >> 16) & 0xFF] ^ t2S[(s1 >> 8) & 0xFF] ^ t3S[s2 & 0xFF] ^ rk3;
+
+			s0 = t0;
+			s1 = t1;
+			s2 = t2;
+			s3 = t3;
+
+			//if (threadIndex == 0 && rangeCount == 0) {
+			//	printf("--Round: %d\n", roundCount);
+			//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
+			//	printf("-- Round Key\n");
+			//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
+			//}
+		}
+
+		#ifdef  INFO
+		// Calculate the last round key
+		u32 temp = rk3;
+		rk0 = rk0 ^
+			(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+			(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+			(t4S[(temp) & 0xff] & 0x0000ff00) ^
+			(t4S[(temp >> 24)] & 0x000000ff) ^
+			rconS[ROUND_COUNT - 1];
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
+		if (s0 == ctS[0]) {
+			rk1 = rk1 ^ rk0;
+			s1 = (t4S[t1 >> 24] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t0) & 0xFF] & 0x000000FF) ^ rk1;
+			if (s1 == ctS[1]) {
+				rk2 = rk2 ^ rk1;
+				s2 = (t4S[t2 >> 24] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t1) & 0xFF] & 0x000000FF) ^ rk2;
+				if (s2 == ctS[2]) {
+					rk3 = rk2 ^ rk3;
+					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
+					if (s3 == ctS[3]) {
+						printf("! FOUND KEY\n");
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], rk4);
 					}
 				}
 			}
@@ -716,10 +925,10 @@ int main() {
 	ct[3] = 0xa3d85b88U;
 
 	// Allocate S-BOX
-	u8* sBox;
-	gpuErrorCheck(cudaMallocManaged(&sBox, TABLE_SIZE * sizeof(u8)));
+	u32* sBox;
+	gpuErrorCheck(cudaMallocManaged(&sBox, TABLE_SIZE * sizeof(u32)));
 	for (int i = 0; i < TABLE_SIZE; i++) {
-		sBox[i] = S_BOX[i];
+		sBox[i] = SBOX[i];
 	}
 	
 	// Allocate Tables
@@ -781,7 +990,14 @@ int main() {
 
 	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
-	exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, range);
+
+	// 46
+	//exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, range);
+
+	// 53
+	range[0] = keyRange;
+	exhaustiveSearchWithAtomic<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, sBox, range);
+
 	
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
