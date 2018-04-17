@@ -21,6 +21,8 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 	}
 }
 
+__device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
+
 u32 T0[TABLE_SIZE] = {
 	0xc66363a5U, 0xf87c7c84U, 0xee777799U, 0xf67b7b8dU,
 	0xfff2f20dU, 0xd66b6bbdU, 0xde6f6fb1U, 0x91c5c554U,
