@@ -183,7 +183,6 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
 	__shared__ u32 rkS[U32_SIZE];
-	__shared__ u32 threadRange;
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t0S[threadIdx.x] = t0G[threadIdx.x];
@@ -192,14 +191,10 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		t3S[threadIdx.x] = t3G[threadIdx.x];
 		t4S[threadIdx.x] = t4G[threadIdx.x];
 
-		if (threadIdx.x == 0) {
-			threadRange = *range;
-		}
-
 		if (threadIdx.x < RCON_SIZE) {
 			rconS[threadIdx.x] = rconG[threadIdx.x];
 		}
-
+		 
 		if (threadIdx.x < U32_SIZE) {
 			ptS[threadIdx.x] = pt[threadIdx.x];
 			ctS[threadIdx.x] = ct[threadIdx.x];
@@ -207,6 +202,8 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 threadRange = *range;
 
 	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
@@ -329,15 +326,10 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
 	__shared__ u32 rkS[U32_SIZE];
-	__shared__ u32 threadRange;
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t0S[threadIdx.x] = t0G[threadIdx.x];
 		t4S[threadIdx.x] = t4G[threadIdx.x];
-
-		if (threadIdx.x == 0) {
-			threadRange = *range;
-		}
 
 		if (threadIdx.x < RCON_SIZE) {
 			rconS[threadIdx.x] = rconG[threadIdx.x];
@@ -350,6 +342,8 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 threadRange = *range;
 
 	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
@@ -390,24 +384,16 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 		s2 = s2 ^ rk2;
 		s3 = s3 ^ rk3;
 
-		//if (threadIndex == 0 && rangeCount == 0) {
-		//	printf("--Round: %d\n", 0);
-		//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
-		//	printf("-- Round Key\n");
-		//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
-		//}
-
 		u32 t0, t1, t2, t3;
 		for (u8 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
 
 			// Calculate round key
 			u32 temp = rk3;
-			// TODO: temp & 0xff000000
 			rk0 = rk0 ^
 				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
-				(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
-				(t4S[(temp) & 0xff] & 0x0000ff00) ^
-				(t4S[(temp >> 24)] & 0x000000ff) ^
+				(t4S[(temp >>  8) & 0xff] & 0x00ff0000) ^
+				(t4S[(temp      ) & 0xff] & 0x0000ff00) ^
+				(t4S[(temp >> 24)       ] & 0x000000ff) ^
 				rconS[roundCount - 1];
 			rk1 = rk1 ^ rk0;
 			rk2 = rk2 ^ rk1;
@@ -424,12 +410,6 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 			s2 = t2;
 			s3 = t3;
 
-			//if (threadIndex == 0 && rangeCount == 0) {
-			//	printf("--Round: %d\n", roundCount);
-			//	printf("%08x%08x%08x%08x\n", s0, s1, s2, s3);
-			//	printf("-- Round Key\n");
-			//	printf("%08x%08x%08x%08x\n", rk0, rk1, rk2, rk3);
-			//}
 		}
 
 		// Calculate the last round key
@@ -543,9 +523,9 @@ int main() {
 	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
 
-	//exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
+	exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
 
-	exhaustiveSearchWithOneTable<<<blocks, threads>>>(pt, ct, rk, t0, t4, rcon, range);
+	//exhaustiveSearchWithOneTable<<<blocks, threads>>>(pt, ct, rk, t0, t4, rcon, range);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
