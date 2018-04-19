@@ -204,6 +204,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	// </SHARED MEMORY>
 
 	u32 threadRange = *range;
+	u32 threadRangeStart = threadIndex * threadRange;
 
 	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
@@ -222,7 +223,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		rk3 = rkS[3];
 
 		// Create key as 32 bit unsigned integers
-		rk3 += threadIndex * threadRange + rangeCount;
+		rk3 += threadRangeStart + rangeCount;
 
 		#ifdef  INFO
 		if (threadIndex == 0) {
@@ -307,7 +308,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadIndex * threadRange + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -344,6 +345,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	// </SHARED MEMORY>
 
 	u32 threadRange = *range;
+	u32 threadRangeStart = threadIndex * threadRange;
 
 	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
@@ -362,7 +364,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 		rk3 = rkS[3];
 
 		// Create key as 32 bit unsigned integers
-		rk3 += threadIndex * threadRange + rangeCount;
+		rk3 += threadRangeStart + rangeCount;
 
 		#ifdef  INFO
 		if (threadIndex == 0) {
@@ -433,7 +435,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadIndex * threadRange + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
 					}
 				}
 			}
