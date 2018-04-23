@@ -5,12 +5,19 @@ typedef unsigned long int		uli;
 typedef unsigned long long	    ull;
 typedef unsigned long long int	ulli;
 
+#define SHARED_MEM_BANK_SIZE			32
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
 #define TABLE_SIZE						256
 #define RCON_SIZE						10
 #define U32_SIZE						4
 #define ROUND_COUNT						10
 #define BYTE_COUNT						16  // 128 / 8
+
+// __byte_perm Constants
+// u32 t = __byte_perm(x, y, selector);
+#define SHIFT_1_RIGHT			17185  // 0x00004321U i.e. ( >> 8 )
+#define SHIFT_2_RIGHT			21554  // 0x00005432U i.e. ( >> 16 )
+#define SHIFT_3_RIGHT			25923  // 0x00006543U i.e. ( >> 24 )
 
 #define gpuErrorCheck(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
@@ -22,6 +29,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 }
 
 __device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
+__device__ u32 arithmeticRightShiftBytePerm(u32 x, u32 n) { return __byte_perm(x, x, n); }
 
 u32 T0[TABLE_SIZE] = {
 	0xc66363a5U, 0xf87c7c84U, 0xee777799U, 0xf67b7b8dU,
@@ -359,3 +367,5 @@ u32 RCON32[RCON_SIZE] = {
 	0x10000000, 0x20000000, 0x40000000, 0x80000000,
 	0x1B000000, 0x36000000,
 };
+
+__global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32 * pt, u32 * ct, u32 * rk, u32 * t0G, u32 * t4G, u32 * rconG, u32 * range);

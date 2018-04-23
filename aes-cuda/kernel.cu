@@ -443,6 +443,266 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	}
 }
 
+__global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u32 ptS[U32_SIZE];
+	__shared__ u32 ctS[U32_SIZE];
+	__shared__ u32 rkS[U32_SIZE];
+
+	if (threadIdx.x < TABLE_SIZE) {
+		t4S[threadIdx.x] = t4G[threadIdx.x];
+		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
+			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
+		}
+
+		if (threadIdx.x < RCON_SIZE) {
+			rconS[threadIdx.x] = rconG[threadIdx.x];
+		}
+
+		if (threadIdx.x < U32_SIZE) {
+			ptS[threadIdx.x] = pt[threadIdx.x];
+			ctS[threadIdx.x] = ct[threadIdx.x];
+			rkS[threadIdx.x] = rk[threadIdx.x];
+		}
+	}
+	// </SHARED MEMORY>
+
+	u32 threadRange = *range;
+	u32 threadRangeStart = threadIndex * threadRange;
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		u32 rk0, rk1, rk2, rk3;
+		rk0 = rkS[0];
+		rk1 = rkS[1];
+		rk2 = rkS[2];
+		rk3 = rkS[3];
+
+		// Create key as 32 bit unsigned integers
+		rk3 += threadRangeStart + rangeCount;
+
+		#ifdef  INFO
+		if (threadIndex == 0) {
+			atomicAdd(&rk3Max, 1);
+		}
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		// Create plaintext as 32 bit unsigned integers
+		u32 s0, s1, s2, s3;
+		s0 = ptS[0];
+		s1 = ptS[1];
+		s2 = ptS[2];
+		s3 = ptS[3];
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rk0;
+		s1 = s1 ^ rk1;
+		s2 = s2 ^ rk2;
+		s3 = s3 ^ rk3;
+
+		u32 t0, t1, t2, t3;
+		for (u8 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+
+			// Calculate round key
+			u32 temp = rk3;
+			rk0 = rk0 ^
+				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+				(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+				(t4S[(temp) & 0xff] & 0x0000ff00) ^
+				(t4S[(temp >> 24)] & 0x000000ff) ^
+				rconS[roundCount - 1];
+			rk1 = rk1 ^ rk0;
+			rk2 = rk2 ^ rk1;
+			rk3 = rk2 ^ rk3;
+
+			// Table based round function
+			t0 = t0S[s0 >> 24][warpThreadIndex] ^ arithmeticRightShift(t0S[(s1 >> 16) & 0xFF][warpThreadIndex], 8) ^ arithmeticRightShift(t0S[(s2 >> 8) & 0xFF][warpThreadIndex], 16) ^ arithmeticRightShift(t0S[s3 & 0xFF][warpThreadIndex], 24) ^ rk0;
+			t1 = t0S[s1 >> 24][warpThreadIndex] ^ arithmeticRightShift(t0S[(s2 >> 16) & 0xFF][warpThreadIndex], 8) ^ arithmeticRightShift(t0S[(s3 >> 8) & 0xFF][warpThreadIndex], 16) ^ arithmeticRightShift(t0S[s0 & 0xFF][warpThreadIndex], 24) ^ rk1;
+			t2 = t0S[s2 >> 24][warpThreadIndex] ^ arithmeticRightShift(t0S[(s3 >> 16) & 0xFF][warpThreadIndex], 8) ^ arithmeticRightShift(t0S[(s0 >> 8) & 0xFF][warpThreadIndex], 16) ^ arithmeticRightShift(t0S[s1 & 0xFF][warpThreadIndex], 24) ^ rk2;
+			t3 = t0S[s3 >> 24][warpThreadIndex] ^ arithmeticRightShift(t0S[(s0 >> 16) & 0xFF][warpThreadIndex], 8) ^ arithmeticRightShift(t0S[(s1 >> 8) & 0xFF][warpThreadIndex], 16) ^ arithmeticRightShift(t0S[s2 & 0xFF][warpThreadIndex], 24) ^ rk3;
+
+			s0 = t0;
+			s1 = t1;
+			s2 = t2;
+			s3 = t3;
+
+		}
+
+		// Calculate the last round key
+		u32 temp = rk3;
+		rk0 = rk0 ^
+			(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+			(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+			(t4S[(temp) & 0xff] & 0x0000ff00) ^
+			(t4S[(temp >> 24)] & 0x000000ff) ^
+			rconS[ROUND_COUNT - 1];
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
+		if (s0 == ctS[0]) {
+			rk1 = rk1 ^ rk0;
+			s1 = (t4S[t1 >> 24] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t0) & 0xFF] & 0x000000FF) ^ rk1;
+			if (s1 == ctS[1]) {
+				rk2 = rk2 ^ rk1;
+				s2 = (t4S[t2 >> 24] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t1) & 0xFF] & 0x000000FF) ^ rk2;
+				if (s2 == ctS[2]) {
+					rk3 = rk2 ^ rk3;
+					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
+					if (s3 == ctS[3]) {
+						printf("! FOUND KEY\n");
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+					}
+				}
+			}
+		}
+	}
+}
+
+__global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u32 ptS[U32_SIZE];
+	__shared__ u32 ctS[U32_SIZE];
+	__shared__ u32 rkS[U32_SIZE];
+
+	if (threadIdx.x < TABLE_SIZE) {
+		t4S[threadIdx.x] = t4G[threadIdx.x];
+		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
+			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
+		}
+
+		if (threadIdx.x < RCON_SIZE) {
+			rconS[threadIdx.x] = rconG[threadIdx.x];
+		}
+
+		if (threadIdx.x < U32_SIZE) {
+			ptS[threadIdx.x] = pt[threadIdx.x];
+			ctS[threadIdx.x] = ct[threadIdx.x];
+			rkS[threadIdx.x] = rk[threadIdx.x];
+		}
+	}
+	// </SHARED MEMORY>
+
+	u32 threadRange = *range;
+	u32 threadRangeStart = threadIndex * threadRange;
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		u32 rk0, rk1, rk2, rk3;
+		rk0 = rkS[0];
+		rk1 = rkS[1];
+		rk2 = rkS[2];
+		rk3 = rkS[3];
+
+		// Create key as 32 bit unsigned integers
+		rk3 += threadRangeStart + rangeCount;
+
+		#ifdef  INFO
+		if (threadIndex == 0) {
+			atomicAdd(&rk3Max, 1);
+		}
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		// Create plaintext as 32 bit unsigned integers
+		u32 s0, s1, s2, s3;
+		s0 = ptS[0];
+		s1 = ptS[1];
+		s2 = ptS[2];
+		s3 = ptS[3];
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rk0;
+		s1 = s1 ^ rk1;
+		s2 = s2 ^ rk2;
+		s3 = s3 ^ rk3;
+
+		u32 t0, t1, t2, t3;
+		for (u8 roundCount = 1; roundCount < ROUND_COUNT; roundCount++) {
+
+			// Calculate round key
+			u32 temp = rk3;
+			rk0 = rk0 ^
+				(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+				(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+				(t4S[(temp) & 0xff] & 0x0000ff00) ^
+				(t4S[(temp >> 24)] & 0x000000ff) ^
+				rconS[roundCount - 1];
+			rk1 = rk1 ^ rk0;
+			rk2 = rk2 ^ rk1;
+			rk3 = rk2 ^ rk3;
+
+			// Table based round function
+			t0 = t0S[s0 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s3 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk0;
+			t1 = t0S[s1 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s0 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk1;
+			t2 = t0S[s2 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s1 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk2;
+			t3 = t0S[s3 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s2 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk3;
+
+			s0 = t0;
+			s1 = t1;
+			s2 = t2;
+			s3 = t3;
+
+		}
+
+		// Calculate the last round key
+		u32 temp = rk3;
+		rk0 = rk0 ^
+			(t4S[(temp >> 16) & 0xff] & 0xff000000) ^
+			(t4S[(temp >> 8) & 0xff] & 0x00ff0000) ^
+			(t4S[(temp) & 0xff] & 0x0000ff00) ^
+			(t4S[(temp >> 24)] & 0x000000ff) ^
+			rconS[ROUND_COUNT - 1];
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = (t4S[t0 >> 24] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t3) & 0xFF] & 0x000000FF) ^ rk0;
+		if (s0 == ctS[0]) {
+			rk1 = rk1 ^ rk0;
+			s1 = (t4S[t1 >> 24] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t0) & 0xFF] & 0x000000FF) ^ rk1;
+			if (s1 == ctS[1]) {
+				rk2 = rk2 ^ rk1;
+				s2 = (t4S[t2 >> 24] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t1) & 0xFF] & 0x000000FF) ^ rk2;
+				if (s2 == ctS[2]) {
+					rk3 = rk2 ^ rk3;
+					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
+					if (s3 == ctS[3]) {
+						printf("! FOUND KEY\n");
+						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+					}
+				}
+			}
+		}
+	}
+}
+
 int main() {
 
 	// Allocate key
@@ -525,9 +785,13 @@ int main() {
 	clock_t beginTime = clock();
 	//enc<<<1, 1>>>(BLOCKS, THREADS);
 
-	exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
+	//exhaustiveSearch<<<blocks, threads>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
 
 	//exhaustiveSearchWithOneTable<<<blocks, threads>>>(pt, ct, rk, t0, t4, rcon, range);
+
+	//exhaustiveSearchWithOneTableExtendedSharedMemory<<<blocks, threads>>>(pt, ct, rk, t0, t4, rcon, range);
+
+	exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm<<<blocks, threads>>>(pt, ct, rk, t0, t4, rcon, range);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
