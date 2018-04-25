@@ -180,9 +180,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	__shared__ u32 t3S[TABLE_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
 	__shared__ u32 rconS[RCON_SIZE];
-	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
-	__shared__ u32 rkS[U32_SIZE];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t0S[threadIdx.x] = t0G[threadIdx.x];
@@ -196,12 +194,22 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 		}
 		 
 		if (threadIdx.x < U32_SIZE) {
-			ptS[threadIdx.x] = pt[threadIdx.x];
 			ctS[threadIdx.x] = ct[threadIdx.x];
-			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 rk0Init, rk1Init, rk2Init, rk3Init;
+	rk0Init = rk[0];
+	rk1Init = rk[1];
+	rk2Init = rk[2];
+	rk3Init = rk[3];
+
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+	pt2Init = pt[2];
+	pt3Init = pt[3];
 
 	u32 threadRange = *range;
 	u32 threadRangeStart = threadIndex * threadRange;
@@ -217,10 +225,10 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
-		rk0 = rkS[0];
-		rk1 = rkS[1];
-		rk2 = rkS[2];
-		rk3 = rkS[3];
+		rk0 = rk0Init;
+		rk1 = rk1Init;
+		rk2 = rk2Init;
+		rk3 = rk3Init;
 
 		// Create key as 32 bit unsigned integers
 		rk3 += threadRangeStart + rangeCount;
@@ -234,10 +242,10 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = ptS[0];
-		s1 = ptS[1];
-		s2 = ptS[2];
-		s3 = ptS[3];
+		s0 = pt0Init;
+		s1 = pt1Init;
+		s2 = pt2Init;
+		s3 = pt3Init;
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -308,7 +316,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -324,9 +332,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	__shared__ u32 t0S[TABLE_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
 	__shared__ u32 rconS[RCON_SIZE];
-	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
-	__shared__ u32 rkS[U32_SIZE];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t0S[threadIdx.x] = t0G[threadIdx.x];
@@ -337,12 +343,22 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 		}
 
 		if (threadIdx.x < U32_SIZE) {
-			ptS[threadIdx.x] = pt[threadIdx.x];
 			ctS[threadIdx.x] = ct[threadIdx.x];
-			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 rk0Init, rk1Init, rk2Init, rk3Init;
+	rk0Init = rk[0];
+	rk1Init = rk[1];
+	rk2Init = rk[2];
+	rk3Init = rk[3];
+
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+	pt2Init = pt[2];
+	pt3Init = pt[3];
 
 	u32 threadRange = *range;
 	u32 threadRangeStart = threadIndex * threadRange;
@@ -358,10 +374,10 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
-		rk0 = rkS[0];
-		rk1 = rkS[1];
-		rk2 = rkS[2];
-		rk3 = rkS[3];
+		rk0 = rk0Init;
+		rk1 = rk1Init;
+		rk2 = rk2Init;
+		rk3 = rk3Init;
 
 		// Create key as 32 bit unsigned integers
 		rk3 += threadRangeStart + rangeCount;
@@ -375,10 +391,10 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = ptS[0];
-		s1 = ptS[1];
-		s2 = ptS[2];
-		s3 = ptS[3];
+		s0 = pt0Init;
+		s1 = pt1Init;
+		s2 = pt2Init;
+		s3 = pt3Init;
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -435,7 +451,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -452,9 +468,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
 	__shared__ u32 rconS[RCON_SIZE];
-	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
-	__shared__ u32 rkS[U32_SIZE];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t4S[threadIdx.x] = t4G[threadIdx.x];
@@ -467,12 +481,22 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 		}
 
 		if (threadIdx.x < U32_SIZE) {
-			ptS[threadIdx.x] = pt[threadIdx.x];
 			ctS[threadIdx.x] = ct[threadIdx.x];
-			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 rk0Init, rk1Init, rk2Init, rk3Init;
+	rk0Init = rk[0];
+	rk1Init = rk[1];
+	rk2Init = rk[2];
+	rk3Init = rk[3];
+
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+	pt2Init = pt[2];
+	pt3Init = pt[3];
 
 	u32 threadRange = *range;
 	u32 threadRangeStart = threadIndex * threadRange;
@@ -488,10 +512,10 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
-		rk0 = rkS[0];
-		rk1 = rkS[1];
-		rk2 = rkS[2];
-		rk3 = rkS[3];
+		rk0 = rk0Init;
+		rk1 = rk1Init;
+		rk2 = rk2Init;
+		rk3 = rk3Init;
 
 		// Create key as 32 bit unsigned integers
 		rk3 += threadRangeStart + rangeCount;
@@ -505,10 +529,10 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = ptS[0];
-		s1 = ptS[1];
-		s2 = ptS[2];
-		s3 = ptS[3];
+		s0 = pt0Init;
+		s1 = pt1Init;
+		s2 = pt2Init;
+		s3 = pt3Init;
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -565,7 +589,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -582,9 +606,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE];
 	__shared__ u32 rconS[RCON_SIZE];
-	__shared__ u32 ptS[U32_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
-	__shared__ u32 rkS[U32_SIZE];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		t4S[threadIdx.x] = t4G[threadIdx.x];
@@ -597,12 +619,22 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 		}
 
 		if (threadIdx.x < U32_SIZE) {
-			ptS[threadIdx.x] = pt[threadIdx.x];
 			ctS[threadIdx.x] = ct[threadIdx.x];
-			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 	}
 	// </SHARED MEMORY>
+
+	u32 rk0Init, rk1Init, rk2Init, rk3Init;
+	rk0Init = rk[0];
+	rk1Init = rk[1];
+	rk2Init = rk[2];
+	rk3Init = rk[3];
+
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+	pt2Init = pt[2];
+	pt3Init = pt[3];
 
 	u32 threadRange = *range;
 	u32 threadRangeStart = threadIndex * threadRange;
@@ -618,10 +650,10 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
 
 		u32 rk0, rk1, rk2, rk3;
-		rk0 = rkS[0];
-		rk1 = rkS[1];
-		rk2 = rkS[2];
-		rk3 = rkS[3];
+		rk0 = rk0Init;
+		rk1 = rk1Init;
+		rk2 = rk2Init;
+		rk3 = rk3Init;
 
 		// Create key as 32 bit unsigned integers
 		rk3 += threadRangeStart + rangeCount;
@@ -635,10 +667,10 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
-		s0 = ptS[0];
-		s1 = ptS[1];
-		s2 = ptS[2];
-		s3 = ptS[3];
+		s0 = pt0Init;
+		s1 = pt1Init;
+		s2 = pt2Init;
+		s3 = pt3Init;
 
 		// First round just XORs input with key.
 		s0 = s0 ^ rk0;
@@ -695,7 +727,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rkS[0], rkS[1], rkS[2], threadRangeStart + rangeCount);
+						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
