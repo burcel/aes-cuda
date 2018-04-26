@@ -655,6 +655,11 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 		rk2 = rk2Init;
 		rk3 = rk3Init;
 
+		// Overflow
+		//if (rk3 + threadRangeStart + rangeCount <= rk3) {
+		//	rk2 += 1;
+		//}
+
 		// Create key as 32 bit unsigned integers
 		rk3 += threadRangeStart + rangeCount;
 
@@ -807,7 +812,7 @@ int main() {
 	printf("Key Range (decimal)                : %.0f\n", keyRange);
 	printf("Each Thread Key Range              : %.2f\n", threadRange);
 	printf("Each Thread Key Range (kernel)     : %d\n", range[0]);
-	printf("Total encryptions                  : %d\n", range[0] * threadCount);
+	printf("Total encryptions                  : %.0f\n", ceil(threadRange) * threadCount);
 	printf("------------------------------------\n");
 	printf("Initial Key                        : %08x%08x%08x%08x\n", rk[0], rk[1], rk[2], rk[3]);
 	printf("Plaintext                          : %08x%08x%08x%08x\n", pt[0], pt[1], pt[2], pt[3]);
