@@ -320,8 +320,7 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -457,8 +456,7 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -597,8 +595,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -742,8 +739,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
@@ -886,7 +882,7 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4Shifted
 					s3 = t4_3S[t3 >> 24] ^ t4_2S[(t0 >> 16) & 0xff] ^ t4_1S[(t1 >> 8) & 0xff] ^ t4_0S[(t2) & 0xFF] ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! FOUND KEY\n");
-						printf("! Found key : %08x%08x%08x%08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
 					}
 				}
 			}
@@ -960,10 +956,10 @@ int main() {
 	int blocks = 1024;
 	int threads = 1024;
 	int threadCount = blocks * threads;
-	int twoPowerRange = 22;
+	int twoPowerRange = 31;
 	double keyRange = pow(2, twoPowerRange);
 	double threadRange = keyRange / threadCount;
-	range[0] = ceil(threadRange);
+	*range = ceil(threadRange);
 
 	// Printing info
 	printf("------------------------------------\n");
@@ -976,9 +972,9 @@ int main() {
 	printf("Each Thread Key Range (kernel)     : %d\n", range[0]);
 	printf("Total encryptions                  : %.0f\n", ceil(threadRange) * threadCount);
 	printf("------------------------------------\n");
-	printf("Initial Key                        : %08x%08x%08x%08x\n", rk[0], rk[1], rk[2], rk[3]);
-	printf("Plaintext                          : %08x%08x%08x%08x\n", pt[0], pt[1], pt[2], pt[3]);
-	printf("Ciphertext                         : %08x%08x%08x%08x\n", ct[0], ct[1], ct[2], ct[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
+	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
 	printf("------------------------------------\n");
 
 	clock_t beginTime = clock();
@@ -996,6 +992,8 @@ int main() {
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
+
+	printLastCUDAError();
 
 	// Printing info
 	#ifdef  INFO

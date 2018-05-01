@@ -29,6 +29,15 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 	}
 }
 
+void printLastCUDAError(){
+	cudaError_t cudaError = cudaGetLastError();
+	if (cudaError != cudaSuccess) {
+		printf("-----\n");
+		printf("ERROR: cudaGetLastError() returned %d: %s\n", cudaError, cudaGetErrorString(cudaError));
+		printf("-----\n");
+	}
+}
+
 __device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
 __device__ u32 arithmeticRightShiftBytePerm(u32 x, u32 n) { return __byte_perm(x, x, n); }
 
