@@ -19,12 +19,8 @@
 
 //#define INFO 1
 #ifdef  INFO
-__device__ u32 rk0Max = 0;
-__device__ u32 rk1Max = 0;
-__device__ u32 rk2Max = 0;
-__device__ u32 rk3Max = 0;
 __device__ u32 totalThreadCount = 0;
-__device__ ulli totalEncryptions = 0;
+__device__ ull totalEncryptions = 0;
 __device__ u32 maxThreadIndex = 0;
 #endif // INFO
 
@@ -204,6 +200,14 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
 	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
@@ -217,33 +221,21 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 	pt3Init = pt[3];
 
 	u32 threadRange = *range;
-	u32 threadRangeStart = threadIndex * threadRange;
-
-	#ifdef  INFO
-	atomicAdd(&totalThreadCount, 1);
-	atomicMax(&maxThreadIndex, threadIndex);
-	#endif // INFO
-
-	// Wait until every thread is ready
-	__syncthreads();
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	rk2Init = rk2Init + threadRangeStart / MAX_U32;
+	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		// Create key as 32 bit unsigned integers
-		rk3 += threadRangeStart + rangeCount;
-
-		#ifdef  INFO
-		if (threadIndex == 0) {
-			atomicAdd(&rk3Max, 1);
-		}
-		atomicAdd(&totalEncryptions, 1);
-		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -320,11 +312,19 @@ __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, 
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
 		}
+
+		// Overflow
+		if (rk3Init == MAX_U32) {
+			rk2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		rk3Init++;
 	}
 }
 
@@ -354,6 +354,14 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
 	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
@@ -367,33 +375,21 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 	pt3Init = pt[3];
 
 	u32 threadRange = *range;
-	u32 threadRangeStart = threadIndex * threadRange;
-
-	#ifdef  INFO
-	atomicAdd(&totalThreadCount, 1);
-	atomicMax(&maxThreadIndex, threadIndex);
-	#endif // INFO
-
-	// Wait until every thread is ready
-	__syncthreads();
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	rk2Init = rk2Init + threadRangeStart / MAX_U32;
+	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		// Create key as 32 bit unsigned integers
-		rk3 += threadRangeStart + rangeCount;
-
-		#ifdef  INFO
-		if (threadIndex == 0) {
-			atomicAdd(&rk3Max, 1);
-		}
-		atomicAdd(&totalEncryptions, 1);
-		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -456,11 +452,19 @@ __global__ void exhaustiveSearchWithOneTable(u32* pt, u32* ct, u32* rk, u32* t0G
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
 		}
+
+		// Overflow
+		if (rk3Init == MAX_U32) {
+			rk2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		rk3Init++;
 	}
 }
 
@@ -493,6 +497,14 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
 	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
@@ -506,33 +518,21 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 	pt3Init = pt[3];
 
 	u32 threadRange = *range;
-	u32 threadRangeStart = threadIndex * threadRange;
-
-	#ifdef  INFO
-	atomicAdd(&totalThreadCount, 1);
-	atomicMax(&maxThreadIndex, threadIndex);
-	#endif // INFO
-
-	// Wait until every thread is ready
-	__syncthreads();
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	rk2Init = rk2Init + threadRangeStart / MAX_U32;
+	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		// Create key as 32 bit unsigned integers
-		rk3 += threadRangeStart + rangeCount;
-
-		#ifdef  INFO
-		if (threadIndex == 0) {
-			atomicAdd(&rk3Max, 1);
-		}
-		atomicAdd(&totalEncryptions, 1);
-		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -595,11 +595,19 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemory(u32* pt, u32* c
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 24] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff] & 0x0000FF00) ^ (t4S[(t2) & 0xFF] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
 		}
+
+		// Overflow
+		if (rk3Init == MAX_U32) {
+			rk2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		rk3Init++;
 	}
 }
 
@@ -632,6 +640,14 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
 	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
@@ -649,28 +665,17 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 	rk2Init = rk2Init + threadRangeStart / MAX_U32;
 	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
-	#ifdef  INFO
-	atomicAdd(&totalThreadCount, 1);
-	atomicMax(&maxThreadIndex, threadIndex);
-	#endif // INFO
-
-	// Wait until every thread is ready
-	__syncthreads();
-
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		#ifdef  INFO
-		if (threadIndex == 0) {
-			atomicAdd(&rk3Max, 1);
-		}
-		atomicAdd(&totalEncryptions, 1);
-		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -785,6 +790,14 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4Shifted
 	}
 	// </SHARED MEMORY>
 
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
 	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
@@ -798,39 +811,21 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4Shifted
 	pt3Init = pt[3];
 
 	u32 threadRange = *range;
-	u32 threadRangeStart = threadIndex * threadRange;
-	
-	#ifdef  INFO
-	atomicAdd(&totalThreadCount, 1);
-	atomicMax(&maxThreadIndex, threadIndex);
-	#endif // INFO
-
-	// Wait until every thread is ready
-	__syncthreads();
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	rk2Init = rk2Init + threadRangeStart / MAX_U32;
+	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
 	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
 
 		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		// Overflow
-		//if (rk3 + threadRangeStart + rangeCount <= rk3) {
-		//	rk2 += 1;
-		//}
-
-		// Create key as 32 bit unsigned integers
-		rk3 += threadRangeStart + rangeCount;
-
-		#ifdef  INFO
-		atomicMax(&rk0Max, rk0);
-		atomicMax(&rk1Max, rk1);
-		atomicMax(&rk2Max, rk2);
-		atomicMax(&rk3Max, rk3);
-		atomicAdd(&totalEncryptions, 1);
-		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
 		u32 s0, s1, s2, s3;
@@ -883,12 +878,19 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4Shifted
 					rk3 = rk2 ^ rk3;
 					s3 = t4_3S[t3 >> 24] ^ t4_2S[(t0 >> 16) & 0xff] ^ t4_1S[(t1 >> 8) & 0xff] ^ t4_0S[(t2) & 0xFF] ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! FOUND KEY\n");
-						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, threadRangeStart + rangeCount);
+						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
 		}
+
+		// Overflow
+		if (rk3Init == MAX_U32) {
+			rk2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		rk3Init++;
 	}
 }
 
@@ -1004,14 +1006,10 @@ int main() {
 	cudaMemcpyFromSymbol(&total, totalThreadCount, sizeof(u32));
 	printf("Total Thread count                 : %d\n", total);
 	cudaMemcpyFromSymbol(&total, maxThreadIndex, sizeof(u32));
-	printf("rk2Max                             : %d\n", total);
-	cudaMemcpyFromSymbol(&total, rk2Max, sizeof(u32));
-	printf("rk3Max                             : %d\n", total);
-	cudaMemcpyFromSymbol(&total, rk3Max, sizeof(u32));
-	printf("Total Thread Key Range             : %d\n", total);
+	printf("Max Thread Index                   : %d\n", total);
 	ulli totEncryption;
 	cudaMemcpyFromSymbol(&totEncryption, totalEncryptions, sizeof(ulli));
-	printf("Total encryptions                  : %lu\n", total);
+	printf("Total encryptions                  : %lu\n", totEncryption);
 	printf("------------------------------------\n");
 	#endif // INFO
 
