@@ -645,7 +645,9 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 	pt3Init = pt[3];
 
 	u32 threadRange = *range;
-	u32 threadRangeStart = threadIndex * threadRange;
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	rk2Init = rk2Init + threadRangeStart / MAX_U32;
+	rk3Init = rk3Init + threadRangeStart % MAX_U32;
 
 	#ifdef  INFO
 	atomicAdd(&totalThreadCount, 1);
@@ -662,14 +664,6 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
-
-		// Overflow
-		//if (rk3 + threadRangeStart + rangeCount <= rk3) {
-		//	rk2 += 1;
-		//}
-
-		// Create key as 32 bit unsigned integers
-		rk3 += threadRangeStart + rangeCount;
 
 		#ifdef  INFO
 		if (threadIndex == 0) {
@@ -744,6 +738,14 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32* pt
 				}
 			}
 		}
+
+		// Overflow
+		if (rk3Init == MAX_U32) {
+			rk2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		rk3Init++;
 	}
 }
 

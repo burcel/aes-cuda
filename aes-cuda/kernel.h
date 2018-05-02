@@ -13,6 +13,7 @@ typedef unsigned long long int	ulli;
 #define ROUND_COUNT						10
 #define ROUND_COUNT_MIN_1				9
 #define BYTE_COUNT						16  // 128 / 8
+#define MAX_U32							4294967295
 
 // __byte_perm Constants
 // u32 t = __byte_perm(x, y, selector);
