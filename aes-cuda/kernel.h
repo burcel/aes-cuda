@@ -5,6 +5,10 @@ typedef unsigned long int		uli;
 typedef unsigned long long	    ull;
 typedef unsigned long long int	ulli;
 
+#define BLOCKS				1024
+#define THREADS				1024
+#define TWO_POWER_RANGE		31
+
 #define SHARED_MEM_BANK_SIZE			32
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
 #define TABLE_SIZE						256
@@ -14,6 +18,7 @@ typedef unsigned long long int	ulli;
 #define ROUND_COUNT_MIN_1				9
 #define BYTE_COUNT						16  // 128 / 8
 #define MAX_U32							4294967295
+#define PARTLY_DIVIDE_THRESHOLD			110
 
 // __byte_perm Constants
 // u32 t = __byte_perm(x, y, selector);
@@ -41,6 +46,13 @@ void printLastCUDAError(){
 
 __device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
 __device__ u32 arithmeticRightShiftBytePerm(u32 x, u32 n) { return __byte_perm(x, x, n); }
+__device__ u32 returnPartlyExpandedTableResult(u32 t0[PARTLY_DIVIDE_THRESHOLD][SHARED_MEM_BANK_SIZE], u32 t1[PARTLY_DIVIDE_THRESHOLD], u32 index, u32 warpThreadIndex) {
+	if (index < PARTLY_DIVIDE_THRESHOLD) {
+		return t0[index][warpThreadIndex];
+	} else {
+		return t1[index];
+	}
+}
 
 u32 T0[TABLE_SIZE] = {
 	0xc66363a5U, 0xf87c7c84U, 0xee777799U, 0xf67b7b8dU,
@@ -642,4 +654,3 @@ u32 RCON32[RCON_SIZE] = {
 	0x1B000000, 0x36000000,
 };
 
-__global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm(u32 * pt, u32 * ct, u32 * rk, u32 * t0G, u32 * t4G, u32 * rconG, u32 * range);
