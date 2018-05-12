@@ -617,26 +617,21 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyEx
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int warpThreadIndex = threadIdx.x & 31;
+	int warpThreadIndexSBox = warpThreadIndex % S_BOX_BANK_SIZE;
 
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
-	__shared__ u32 t4S_0[PARTLY_DIVIDE_THRESHOLD][SHARED_MEM_BANK_SIZE];
-	__shared__ u32 t4S_1[TABLE_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
 	__shared__ u32 rconS[RCON_SIZE];
 	__shared__ u32 ctS[U32_SIZE];
 
 	if (threadIdx.x < TABLE_SIZE) {
-		
 		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
 			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
 		}
 
-		if (threadIdx.x < PARTLY_DIVIDE_THRESHOLD) {
-			for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
-				t4S_0[threadIdx.x][bankIndex] = t4G[threadIdx.x];
-			}
-		} else {
-			t4S_1[threadIdx.x] = t4G[threadIdx.x];
+		for (u8 bankIndex = 0; bankIndex < S_BOX_BANK_SIZE; bankIndex++) {
+			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
 		}
 
 		if (threadIdx.x < RCON_SIZE) {
@@ -705,10 +700,10 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyEx
 			// Calculate round key
 			u32 temp = rk3;
 			rk0 = rk0 ^
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >> 16) & 0xff, warpThreadIndex) & 0xff000000) ^
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >>  8) & 0xff, warpThreadIndex) & 0x00ff0000) ^
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp      ) & 0xff, warpThreadIndex) & 0x0000ff00) ^
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >> 24) & 0xff, warpThreadIndex) & 0x000000ff) ^
+				(t4S[(temp >> 16) & 0xff][warpThreadIndexSBox] & 0xff000000) ^
+				(t4S[(temp >>  8) & 0xff][warpThreadIndexSBox] & 0x00ff0000) ^
+				(t4S[(temp      ) & 0xff][warpThreadIndexSBox] & 0x0000ff00) ^
+				(t4S[(temp >> 24)       ][warpThreadIndexSBox] & 0x000000ff) ^
 				rconS[roundCount];
 			rk1 = rk1 ^ rk0;
 			rk2 = rk2 ^ rk1;
@@ -730,39 +725,22 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyEx
 		// Calculate the last round key
 		u32 temp = rk3;
 		rk0 = rk0 ^
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >> 16) & 0xff, warpThreadIndex) & 0xff000000) ^
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >>  8) & 0xff, warpThreadIndex) & 0x00ff0000) ^
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp      ) & 0xff, warpThreadIndex) & 0x0000ff00) ^
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (temp >> 24) & 0xff, warpThreadIndex) & 0x000000ff) ^
+			(t4S[(temp >> 16) & 0xff][warpThreadIndexSBox] & 0xff000000) ^
+			(t4S[(temp >>  8) & 0xff][warpThreadIndexSBox] & 0x00ff0000) ^
+			(t4S[(temp      ) & 0xff][warpThreadIndexSBox] & 0x0000ff00) ^
+			(t4S[(temp >> 24)       ][warpThreadIndexSBox] & 0x000000ff) ^
 			rconS[ROUND_COUNT_MIN_1];
 		// Last round uses s-box directly and XORs to produce output.
-
-		s0 = (returnPartlyExpandedTableResult(t4S_0, t4S_1, t0 >> 24, warpThreadIndex) & 0xFF000000) ^ 
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t1 >> 16) & 0xff, warpThreadIndex) & 0x00FF0000) ^ 
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t2 >> 8) & 0xff, warpThreadIndex) & 0x0000FF00) ^ 
-			(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t3) & 0xFF, warpThreadIndex) & 0x000000FF) ^ 
-			rk0;
+		s0 = (t4S[t0 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t3) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rk0;
 		if (s0 == ctS[0]) {
 			rk1 = rk1 ^ rk0;
-			s1 = (returnPartlyExpandedTableResult(t4S_0, t4S_1, t1 >> 24, warpThreadIndex) & 0xFF000000) ^ 
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t2 >> 16) & 0xff, warpThreadIndex) & 0x00FF0000) ^ 
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t3 >> 8) & 0xff, warpThreadIndex) & 0x0000FF00) ^
-				(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t0) & 0xFF, warpThreadIndex) & 0x000000FF) ^
-				rk1;
+			s1 = (t4S[t1 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t0) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rk1;
 			if (s1 == ctS[1]) {
 				rk2 = rk2 ^ rk1;
-				s2 = (returnPartlyExpandedTableResult(t4S_0, t4S_1, t2 >> 24, warpThreadIndex) & 0xFF000000) ^ 
-					(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t3 >> 16) & 0xff, warpThreadIndex) & 0x00FF0000) ^
-					(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t0 >> 8) & 0xff, warpThreadIndex) & 0x0000FF00) ^
-					(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t1) & 0xFF, warpThreadIndex) & 0x000000FF) ^
-					rk2;
+				s2 = (t4S[t2 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t1) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rk2;
 				if (s2 == ctS[2]) {
 					rk3 = rk2 ^ rk3;
-					s3 = (returnPartlyExpandedTableResult(t4S_0, t4S_1, t3 >> 24, warpThreadIndex) & 0xFF000000) ^ 
-						(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t0 >> 16) & 0xff, warpThreadIndex) & 0x00FF0000) ^
-						(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t1 >> 8) & 0xff, warpThreadIndex) & 0x0000FF00) ^
-						(returnPartlyExpandedTableResult(t4S_0, t4S_1, (t2) & 0xFF, warpThreadIndex) & 0x000000FF) ^
-						rk3;
+					s3 = (t4S[t3 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t2) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rk3;
 					if (s3 == ctS[3]) {
 						printf("! Found key : %08x %08x %08x %08x\n", rk0Init, rk1Init, rk2Init, rk3Init);
 					}
@@ -1065,30 +1043,30 @@ int main() {
 	// Allocate key
 	u32* rk;
 	gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
-	//rk[0] = 0x00000000U;
-	//rk[1] = 0x00000000U;
-	//rk[2] = 0x00000000U;
-	//rk[3] = 0x00000000U;
+	rk[0] = 0x00000000U;
+	rk[1] = 0x00000000U;
+	rk[2] = 0x00000000U;
+	rk[3] = 0x00000000U;
 
 	// aes-cipher-internals.xlsx
-	rk[0] = 0x2B7E1516U;
-	rk[1] = 0x28AED2A6U;
-	rk[2] = 0xABF71588U;
-	rk[3] = 0x09CF4F3CU;
+	//rk[0] = 0x2B7E1516U;
+	//rk[1] = 0x28AED2A6U;
+	//rk[2] = 0xABF71588U;
+	//rk[3] = 0x09CF4F3CU;
 
 	// Allocate plaintext
 	u32* pt;
 	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
-	pt[0] = 0x00000000U;
-	pt[1] = 0x00000000U;
-	pt[2] = 0x00000000U;
-	pt[3] = 0x00000000U;
+	//pt[0] = 0x00000000U;
+	//pt[1] = 0x00000000U;
+	//pt[2] = 0x00000000U;
+	//pt[3] = 0x00000000U;
 
 	// aes-cipher-internals.xlsx
-	//pt[0] = 0x3243F6A8U;
-	//pt[1] = 0x885A308DU;
-	//pt[2] = 0x313198A2U;
-	//pt[3] = 0xE0370734U;
+	pt[0] = 0x3243F6A8U;
+	pt[1] = 0x885A308DU;
+	pt[2] = 0x313198A2U;
+	pt[3] = 0xE0370734U;
 
 	// Allocate ciphertext
 	u32* ct;
@@ -1176,10 +1154,10 @@ int main() {
 
 	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS >>>(pt, ct, rk, t0, t4, rcon, range);
 
-	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4_0, t4_1, t4_2, t4_3, rcon, range);
+	exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4_0, t4_1, t4_2, t4_3, rcon, range);
 
-	keyExpansion(rk, roundKeys);
-	counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
+	//keyExpansion(rk, roundKeys);
+	//counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
@@ -1209,6 +1187,10 @@ int main() {
 	cudaFree(t2);
 	cudaFree(t3);
 	cudaFree(t4);
+	cudaFree(t4_0);
+	cudaFree(t4_1);
+	cudaFree(t4_2);
+	cudaFree(t4_3);
 	cudaFree(rcon);
 	cudaFree(range);
 	
