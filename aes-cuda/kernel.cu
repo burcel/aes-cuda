@@ -928,6 +928,112 @@ void keyExpansion(u32* key, u32* rk) {
 
 // CTR encryption with one table extended as 32 columns
 // 1 Table [256][32] -> arithmetic shift: __byte_perm function
+// SBox[256] is partly expanded
+__global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox(u32* pt, u32* rk, u32* t0G, u32* t4G, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+	int warpThreadIndexSBox = warpThreadIndex % S_BOX_BANK_SIZE;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
+	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
+	__shared__ u32 rkS[TABLE_BASED_KEY_LIST_ROW_SIZE];
+
+	if (threadIdx.x < TABLE_SIZE) {
+		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
+			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
+		}
+
+		for (u8 bankIndex = 0; bankIndex < S_BOX_BANK_SIZE; bankIndex++) {
+			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
+		}
+
+		if (threadIdx.x < TABLE_BASED_KEY_LIST_ROW_SIZE) {
+			rkS[threadIdx.x] = rk[threadIdx.x];
+		}
+
+	}
+	// </SHARED MEMORY>
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+	pt2Init = pt[2];
+	pt3Init = pt[3];
+
+	u32 threadRange = *range;
+	ull threadRangeStart = (ull)threadIndex * threadRange;
+	pt2Init = pt2Init + threadRangeStart / MAX_U32;
+	pt3Init = pt3Init + threadRangeStart % MAX_U32;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		// Create plaintext as 32 bit unsigned integers
+		u32 s0, s1, s2, s3;
+		s0 = pt0Init;
+		s1 = pt1Init;
+		s2 = pt2Init;
+		s3 = pt3Init;
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rkS[0];
+		s1 = s1 ^ rkS[1];
+		s2 = s2 ^ rkS[2];
+		s3 = s3 ^ rkS[3];
+
+		u32 t0, t1, t2, t3;
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+
+			// Table based round function
+			u32 rkStart = roundCount * 4 + 4;
+			t0 = t0S[s0 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s3 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rkS[rkStart];
+			t1 = t0S[s1 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s0 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rkS[rkStart + 1];
+			t2 = t0S[s2 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s1 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rkS[rkStart + 2];
+			t3 = t0S[s3 >> 24][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 16) & 0xFF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 8) & 0xFF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s2 & 0xFF][warpThreadIndex], SHIFT_3_RIGHT) ^ rkS[rkStart + 3];
+
+			s0 = t0;
+			s1 = t1;
+			s2 = t2;
+			s3 = t3;
+
+		}
+
+		// Calculate the last round key
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = (t4S[t0 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t1 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t2 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t3) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[40];
+		s1 = (t4S[t1 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t2 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t3 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t0) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[41];
+		s2 = (t4S[t2 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t1) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[42];
+		s3 = (t4S[t3 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t2) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[43];
+
+		if (s0 == 0x00000000U) {
+			printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
+		}
+
+		// Overflow
+		if (pt3Init == MAX_U32) {
+			pt2Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		pt3Init++;
+	}
+}
+
+// CTR encryption with one table extended as 32 columns
+// 1 Table [256][32] -> arithmetic shift: __byte_perm function
 // 4 S-box, each shifted
 __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32* pt, u32* rk, u32* t0G, u32* t4_0G, u32* t4_1G, u32* t4_2G, u32* t4_3G, u32* range) {
 
@@ -990,10 +1096,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		s2 = pt2Init;
 		s3 = pt3Init;
 
-		if (threadIndex == 1048575 && rangeCount > (threadRange - 10)) {
-			printf("Plaintext  : %08x %08x %08x %08x\n", s0, s1, s2, s3);
-		}
-
 		// First round just XORs input with key.
 		s0 = s0 ^ rkS[0];
 		s1 = s1 ^ rkS[1];
@@ -1024,7 +1126,7 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		s2 = t4_3S[t2 >> 24] ^ t4_2S[(t3 >> 16) & 0xff] ^ t4_1S[(t0 >> 8) & 0xff] ^ t4_0S[(t1) & 0xFF] ^ rkS[42];
 		s3 = t4_3S[t3 >> 24] ^ t4_2S[(t0 >> 16) & 0xff] ^ t4_1S[(t1 >> 8) & 0xff] ^ t4_0S[(t2) & 0xFF] ^ rkS[43];
 
-		if (threadIndex == 1048575 && rangeCount > (threadRange - 10)) {
+		if (s0 == 0x00000000U) {
 			printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
 		}
 
@@ -1144,6 +1246,8 @@ int main() {
 
 	clock_t beginTime = clock();
 
+	// -- Exhaustive Search --
+
 	//exhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
 
 	//exhaustiveSearchWithOneTable<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4, rcon, range);
@@ -1154,9 +1258,14 @@ int main() {
 
 	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS >>>(pt, ct, rk, t0, t4, rcon, range);
 
-	exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4_0, t4_1, t4_2, t4_3, rcon, range);
+	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4_0, t4_1, t4_2, t4_3, rcon, range);
+
+	// -- CTR --
 
 	//keyExpansion(rk, roundKeys);
+
+	//counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
+
 	//counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
 
 	cudaDeviceSynchronize();
