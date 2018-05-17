@@ -1018,9 +1018,9 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 		s2 = (t4S[t2 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t3 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t0 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t1) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[42];
 		s3 = (t4S[t3 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t2) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[43];
 
-		if (s0 == 0x00000000U) {
-			printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
-		}
+		//if (threadIndex == 1048576) {
+		//	printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
+		//}
 
 		// Overflow
 		if (pt3Init == MAX_U32) {
@@ -1029,6 +1029,10 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 
 		// Create key as 32 bit unsigned integers
 		pt3Init++;
+	}
+
+	if (threadIndex == 1048575) {
+		printf("Plaintext : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
 	}
 }
 
@@ -1126,9 +1130,9 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		s2 = t4_3S[t2 >> 24] ^ t4_2S[(t3 >> 16) & 0xff] ^ t4_1S[(t0 >> 8) & 0xff] ^ t4_0S[(t1) & 0xFF] ^ rkS[42];
 		s3 = t4_3S[t3 >> 24] ^ t4_2S[(t0 >> 16) & 0xff] ^ t4_1S[(t1 >> 8) & 0xff] ^ t4_0S[(t2) & 0xFF] ^ rkS[43];
 
-		if (s0 == 0x00000000U) {
-			printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
-		}
+		//if (s0 == 0x00000000U) {
+		//	printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
+		//}
 
 		// Overflow
 		if (pt3Init == MAX_U32) {
@@ -1137,6 +1141,10 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 
 		// Create key as 32 bit unsigned integers
 		pt3Init++;
+	}
+
+	if (threadIndex == 1048575) {
+		printf("Plaintext : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
 	}
 }
 
@@ -1159,16 +1167,16 @@ int main() {
 	// Allocate plaintext
 	u32* pt;
 	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
-	//pt[0] = 0x00000000U;
-	//pt[1] = 0x00000000U;
-	//pt[2] = 0x00000000U;
-	//pt[3] = 0x00000000U;
+	pt[0] = 0x00000000U;
+	pt[1] = 0x00000000U;
+	pt[2] = 0x00000000U;
+	pt[3] = 0x00000000U;
 
 	// aes-cipher-internals.xlsx
-	pt[0] = 0x3243F6A8U;
-	pt[1] = 0x885A308DU;
-	pt[2] = 0x313198A2U;
-	pt[3] = 0xE0370734U;
+	//pt[0] = 0x3243F6A8U;
+	//pt[1] = 0x885A308DU;
+	//pt[2] = 0x313198A2U;
+	//pt[3] = 0xE0370734U;
 
 	// Allocate ciphertext
 	u32* ct;
@@ -1262,9 +1270,9 @@ int main() {
 
 	// -- CTR --
 
-	//keyExpansion(rk, roundKeys);
+	keyExpansion(rk, roundKeys);
 
-	//counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
+	counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
 
 	//counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
 
