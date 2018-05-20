@@ -965,6 +965,7 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 	__syncthreads();
 
 	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	u32 s0, s1, s2, s3;
 	pt0Init = pt[0];
 	pt1Init = pt[1];
 	pt2Init = pt[2];
@@ -982,7 +983,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
-		u32 s0, s1, s2, s3;
 		s0 = pt0Init;
 		s1 = pt1Init;
 		s2 = pt2Init;
@@ -1019,7 +1019,7 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 		s3 = (t4S[t3 >> 24][warpThreadIndexSBox] & 0xFF000000) ^ (t4S[(t0 >> 16) & 0xff][warpThreadIndexSBox] & 0x00FF0000) ^ (t4S[(t1 >> 8) & 0xff][warpThreadIndexSBox] & 0x0000FF00) ^ (t4S[(t2) & 0xFF][warpThreadIndexSBox] & 0x000000FF) ^ rkS[43];
 
 		//if (threadIndex == 1048576) {
-		//	printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
+		//	printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s2, s3);
 		//}
 
 		// Overflow
@@ -1033,7 +1033,9 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 
 	if (threadIndex == 1048575) {
 		printf("Plaintext : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
+		printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s2, s3);
 	}
+
 }
 
 // CTR encryption with one table extended as 32 columns
@@ -1077,6 +1079,7 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 	__syncthreads();
 
 	u32 pt0Init, pt1Init, pt2Init, pt3Init;
+	u32 s0, s1, s2, s3;
 	pt0Init = pt[0];
 	pt1Init = pt[1];
 	pt2Init = pt[2];
@@ -1094,7 +1097,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		#endif // INFO
 
 		// Create plaintext as 32 bit unsigned integers
-		u32 s0, s1, s2, s3;
 		s0 = pt0Init;
 		s1 = pt1Init;
 		s2 = pt2Init;
@@ -1145,6 +1147,7 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 
 	if (threadIndex == 1048575) {
 		printf("Plaintext : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
+		printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s2, s3);
 	}
 }
 
