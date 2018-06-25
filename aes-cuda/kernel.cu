@@ -1151,6 +1151,107 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 	}
 }
 
+// Key expansion from given key set, populate rk[52]
+void keyExpansion192(u32* key, u32* rk) {
+
+	u32 rk0, rk1, rk2, rk3, rk4, rk5;
+	rk0 = key[0];
+	rk1 = key[1];
+	rk2 = key[2];
+	rk3 = key[3];
+	rk4 = key[4];
+	rk5 = key[5];
+
+	rk[0] = rk0;
+	rk[1] = rk1;
+	rk[2] = rk2;
+	rk[3] = rk3;
+	rk[4] = rk4;
+	rk[5] = rk5;
+
+	for (u8 roundCount = 0; roundCount < ROUND_COUNT_192; roundCount++) {
+		u32 temp = rk5;
+		rk0 = rk0 ^ T4_3[(temp >> 16) & 0xff] ^ T4_2[(temp >> 8) & 0xff] ^ T4_1[(temp) & 0xff] ^ T4_0[(temp >> 24)] ^ RCON32[roundCount];
+		rk1 = rk1 ^ rk0;
+		rk2 = rk2 ^ rk1;
+		rk3 = rk3 ^ rk2;
+		rk4 = rk4 ^ rk3;
+		rk5 = rk5 ^ rk4;
+
+		rk[roundCount * 6 + 6] = rk0;
+		rk[roundCount * 6 + 7] = rk1;
+		rk[roundCount * 6 + 8] = rk2;
+		rk[roundCount * 6 + 9] = rk3;
+		if (roundCount == 7) {
+			break;
+		}
+		rk[roundCount * 6 + 10] = rk4;
+		rk[roundCount * 6 + 11] = rk5;
+	}
+
+	for (int i = 0;i < 52;i++) {
+		printf("%08x ", rk[i]);
+		if ((i+1) % 4 == 0) {
+			printf("Round: %d\n", i / 4);
+		}
+	}
+}
+
+// Key expansion from given key set, populate rk[52]
+void keyExpansion256(u32* key, u32* rk) {
+
+	u32 rk0, rk1, rk2, rk3, rk4, rk5, rk6, rk7;
+	rk0 = key[0];
+	rk1 = key[1];
+	rk2 = key[2];
+	rk3 = key[3];
+	rk4 = key[4];
+	rk5 = key[5];
+	rk6 = key[6];
+	rk7 = key[7];
+
+	rk[0] = rk0;
+	rk[1] = rk1;
+	rk[2] = rk2;
+	rk[3] = rk3;
+	rk[4] = rk4;
+	rk[5] = rk5;
+	rk[6] = rk6;
+	rk[7] = rk7;
+
+	for (u8 roundCount = 0; roundCount < ROUND_COUNT_256; roundCount++) {
+		u32 temp = rk7;
+		rk0 = rk0 ^ T4_3[(temp >> 16) & 0xff] ^ T4_2[(temp >> 8) & 0xff] ^ T4_1[(temp) & 0xff] ^ T4_0[(temp >> 24)] ^ RCON32[roundCount];
+		rk1 = rk1 ^ rk0;
+		rk2 = rk2 ^ rk1;
+		rk3 = rk3 ^ rk2;
+		rk4 = rk4 ^ T4_3[(rk3 >> 24) & 0xff] ^ T4_2[(rk3 >> 16) & 0xff] ^ T4_1[(rk3 >> 8) & 0xff] ^ T4_0[rk3 & 0xff];
+		rk5 = rk5 ^ rk4;
+		rk6 = rk6 ^ rk5;
+		rk7 = rk7 ^ rk6;
+
+		rk[roundCount * 8 + 8] = rk0;
+		rk[roundCount * 8 + 9] = rk1;
+		rk[roundCount * 8 + 10] = rk2;
+		rk[roundCount * 8 + 11] = rk3;
+		if (roundCount == 6) {
+			break;
+		}
+		rk[roundCount * 8 + 12] = rk4;
+		rk[roundCount * 8 + 13] = rk5;
+		rk[roundCount * 8 + 14] = rk6;
+		rk[roundCount * 8 + 15] = rk7;
+		
+	}
+
+	for (int i = 0; i < 60; i++) {
+		printf("%08x ", rk[i]);
+		if ((i + 1) % 4 == 0) {
+			printf("Round: %d\n", i / 4);
+		}
+	}
+}
+
 int main() {
 
 	// Allocate key
@@ -1170,16 +1271,16 @@ int main() {
 	// Allocate plaintext
 	u32* pt;
 	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
-	pt[0] = 0x00000000U;
-	pt[1] = 0x00000000U;
-	pt[2] = 0x00000000U;
-	pt[3] = 0x00000000U;
+	//pt[0] = 0x00000000U;
+	//pt[1] = 0x00000000U;
+	//pt[2] = 0x00000000U;
+	//pt[3] = 0x00000000U;
 
 	// aes-cipher-internals.xlsx
-	//pt[0] = 0x3243F6A8U;
-	//pt[1] = 0x885A308DU;
-	//pt[2] = 0x313198A2U;
-	//pt[3] = 0xE0370734U;
+	pt[0] = 0x3243F6A8U;
+	pt[1] = 0x885A308DU;
+	pt[2] = 0x313198A2U;
+	pt[3] = 0xE0370734U;
 
 	// Allocate ciphertext
 	u32* ct;
@@ -1198,6 +1299,36 @@ int main() {
 	// CTR round keys
 	u32* roundKeys;
 	gpuErrorCheck(cudaMallocManaged(&roundKeys, TABLE_BASED_KEY_LIST_ROW_SIZE * sizeof(u32)));
+
+	// <AES-192>
+	u32* rk192;
+	gpuErrorCheck(cudaMallocManaged(&rk192, 6 * sizeof(u32)));
+	rk192[0] = 0x8e73b0f7U;
+	rk192[1] = 0xda0e6452U;
+	rk192[2] = 0xc810f32bU;
+	rk192[3] = 0x809079e5U;
+	rk192[4] = 0x62f8ead2U;
+	rk192[5] = 0x522c6b7bU;
+	// CTR round keys
+	u32* roundKeys192;
+	gpuErrorCheck(cudaMallocManaged(&roundKeys192, TABLE_BASED_KEY_LIST_SIZE_192 * sizeof(u32)));
+	// </AES-192>
+
+	// <AES-256>
+	u32* rk256;
+	gpuErrorCheck(cudaMallocManaged(&rk256, 8 * sizeof(u32)));
+	rk256[0] = 0x603deb10U;
+	rk256[1] = 0x15ca71beU;
+	rk256[2] = 0x2b73aef0U;
+	rk256[3] = 0x857d7781U;
+	rk256[4] = 0x1f352c07U;
+	rk256[5] = 0x3b6108d7U;
+	rk256[6] = 0x2d9810a3U;
+	rk256[7] = 0x0914dff4U;
+	// CTR round keys
+	u32* roundKeys256;
+	gpuErrorCheck(cudaMallocManaged(&roundKeys256, TABLE_BASED_KEY_LIST_SIZE_256 * sizeof(u32)));
+	// </AES-192>
 
 	// Allocate Tables
 	u32 *t0, *t1, *t2, *t3, *t4, *t4_0, *t4_1, *t4_2, *t4_3;
@@ -1273,11 +1404,17 @@ int main() {
 
 	// -- CTR --
 
-	keyExpansion(rk, roundKeys);
+	//keyExpansion(rk, roundKeys);
 
-	counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
+	//counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
 
 	//counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
+
+	// -- AES-192 CTR --
+	//keyExpansion192(rk192, roundKeys192);
+
+	// -- AES-256 CTR --
+	keyExpansion256(rk256, roundKeys256);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);

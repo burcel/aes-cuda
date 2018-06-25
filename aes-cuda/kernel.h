@@ -7,16 +7,22 @@ typedef unsigned long long int	ulli;
 
 #define BLOCKS				1024
 #define THREADS				1024
-#define TWO_POWER_RANGE		31
+#define TWO_POWER_RANGE		34
 
 #define SHARED_MEM_BANK_SIZE			32
 #define S_BOX_BANK_SIZE					8
 #define TABLE_BASED_KEY_LIST_ROW_SIZE	44
+#define TABLE_BASED_KEY_LIST_SIZE_192	52
+#define TABLE_BASED_KEY_LIST_SIZE_256	60
 #define TABLE_SIZE						256
 #define RCON_SIZE						10
 #define U32_SIZE						4
 #define ROUND_COUNT						10
 #define ROUND_COUNT_MIN_1				9
+#define ROUND_COUNT_192					12
+#define ROUND_COUNT_MIN_1_192			11
+#define ROUND_COUNT_256					14
+#define ROUND_COUNT_MIN_1_256			13
 #define BYTE_COUNT						16  // 128 / 8
 #define MAX_U32							4294967295
 #define PARTLY_DIVIDE_THRESHOLD			110
