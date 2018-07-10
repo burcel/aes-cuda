@@ -1845,26 +1845,21 @@ __global__ void counter256WithOneTableExtendedSharedMemoryBytePermPartlyExtended
 }
 
 
-__global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u16* t4G, u16* rconG, u32* range) {
+__global__ void smallAesExhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int warpThreadIndex = threadIdx.x & 31;
 	int warpThreadIndexSBox = warpThreadIndex % S_BOX_BANK_SIZE;
 
 	// <SHARED MEMORY>
-	__shared__ u16 t0S[16][SHARED_MEM_BANK_SIZE];
-	__shared__ u16 t4S[16][S_BOX_BANK_SIZE];
-	__shared__ u16 rconS[RCON_SIZE];
-	__shared__ u16 ctS[U32_SIZE];
+	__shared__ u32 t0S[16];
+	__shared__ u32 t4S[16];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u32 ctS[U32_SIZE];
 
 	if (threadIdx.x < 16) {
-		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
-			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
-		}
-
-		for (u8 bankIndex = 0; bankIndex < S_BOX_BANK_SIZE; bankIndex++) {
-			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
-		}
+		t0S[threadIdx.x] = t0G[threadIdx.x];
+		t4S[threadIdx.x] = t4G[threadIdx.x];
 
 		if (threadIdx.x < RCON_SIZE) {
 			rconS[threadIdx.x] = rconG[threadIdx.x];
@@ -1872,6 +1867,7 @@ __global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u1
 
 		if (threadIdx.x < U32_SIZE) {
 			ctS[threadIdx.x] = ct[threadIdx.x];
+
 		}
 	}
 	// </SHARED MEMORY>
@@ -1884,13 +1880,13 @@ __global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u1
 	// Wait until every thread is ready
 	__syncthreads();
 
-	u16 rk0Init, rk1Init, rk2Init, rk3Init;
+	u32 rk0Init, rk1Init, rk2Init, rk3Init;
 	rk0Init = rk[0];
 	rk1Init = rk[1];
 	rk2Init = rk[2];
 	rk3Init = rk[3];
 
-	u16 pt0Init, pt1Init, pt2Init, pt3Init;
+	u32 pt0Init, pt1Init, pt2Init, pt3Init;
 	pt0Init = pt[0];
 	pt1Init = pt[1];
 	pt2Init = pt[2];
@@ -1907,14 +1903,14 @@ __global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u1
 		atomicAdd(&totalEncryptions, 1);
 		#endif // INFO
 
-		u16 rk0, rk1, rk2, rk3;
+		u32 rk0, rk1, rk2, rk3;
 		rk0 = rk0Init;
 		rk1 = rk1Init;
 		rk2 = rk2Init;
 		rk3 = rk3Init;
 
 		// Create plaintext as 32 bit unsigned integers
-		u16 s0, s1, s2, s3;
+		u32 s0, s1, s2, s3;
 		s0 = pt0Init;
 		s1 = pt1Init;
 		s2 = pt2Init;
@@ -1926,27 +1922,26 @@ __global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u1
 		s2 = s2 ^ rk2;
 		s3 = s3 ^ rk3;
 
-
-		u16 t0, t1, t2, t3;
+		u32 t0, t1, t2, t3;
 		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
 
 			// Calculate round key
-			u16 temp = rk3;
+			u32 temp = rk3;
 			rk0 = rk0 ^
-				(t4S[(temp >>  8) & 0xf][warpThreadIndexSBox] & 0xf000) ^
-				(t4S[(temp >>  4) & 0xf][warpThreadIndexSBox] & 0x0f00) ^
-				(t4S[(temp      ) & 0xf][warpThreadIndexSBox] & 0x00f0) ^
-				(t4S[(temp >> 12)      ][warpThreadIndexSBox] & 0x000f) ^
+				(t4S[(temp >>  8) & 0xf] & 0xf000) ^
+				(t4S[(temp >>  4) & 0xf] & 0x0f00) ^
+				(t4S[(temp      ) & 0xf] & 0x00f0) ^
+				(t4S[(temp >> 12)      ] & 0x000f) ^
 				rconS[roundCount];
 			rk1 = rk1 ^ rk0;
 			rk2 = rk2 ^ rk1;
 			rk3 = rk2 ^ rk3;
 
 			// Table based round function
-			t0 = t0S[s0 >> 12][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 8) & 0xF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 4) & 0xF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s3 & 0xF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk0;
-			t1 = t0S[s1 >> 12][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 8) & 0xF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 4) & 0xF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s0 & 0xF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk1;
-			t2 = t0S[s2 >> 12][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 8) & 0xF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 4) & 0xF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s1 & 0xF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk2;
-			t3 = t0S[s3 >> 12][warpThreadIndex] ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 8) & 0xF][warpThreadIndex], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 4) & 0xF][warpThreadIndex], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s2 & 0xF][warpThreadIndex], SHIFT_3_RIGHT) ^ rk3;
+			t0 = t0S[s0 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s3 & 0xF], SHIFT_3_RIGHT) ^ rk0;
+			t1 = t0S[s1 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s0 & 0xF], SHIFT_3_RIGHT) ^ rk1;
+			t2 = t0S[s2 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s1 & 0xF], SHIFT_3_RIGHT) ^ rk2;
+			t3 = t0S[s3 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s2 & 0xF], SHIFT_3_RIGHT) ^ rk3;
 
 			s0 = t0;
 			s1 = t1;
@@ -1956,37 +1951,41 @@ __global__ void smallAesExhaustiveSearch(u16* pt, u16* ct, u16* rk, u16* t0G, u1
 		}
 
 		// Calculate the last round key
-		u16 temp = rk3;
+		u32 temp = rk3;
 		rk0 = rk0 ^
-			(t4S[(temp >>  8) & 0xf][warpThreadIndexSBox] & 0xf000) ^
-			(t4S[(temp >>  4) & 0xf][warpThreadIndexSBox] & 0x0f00) ^
-			(t4S[(temp      ) & 0xf][warpThreadIndexSBox] & 0x00f0) ^
-			(t4S[(temp >> 12)      ][warpThreadIndexSBox] & 0x000f) ^
+			(t4S[(temp >>  8) & 0xf] & 0xf000) ^
+			(t4S[(temp >>  4) & 0xf] & 0x0f00) ^
+			(t4S[(temp      ) & 0xf] & 0x00f0) ^
+			(t4S[(temp >> 12)      ] & 0x000f) ^
 			rconS[ROUND_COUNT_MIN_1];
 		// Last round uses s-box directly and XORs to produce output.
-		s0 = (t4S[t0 >> 12][warpThreadIndexSBox] & 0xF000) ^ (t4S[(t1 >> 8) & 0xf][warpThreadIndexSBox] & 0x0F00) ^ (t4S[(t2 >> 4) & 0xf][warpThreadIndexSBox] & 0x00F0) ^ (t4S[(t3) & 0xF][warpThreadIndexSBox] & 0x000F) ^ rk0;
+		s0 = (t4S[t0 >> 12] & 0xF000) ^ (t4S[(t1 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t2 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t3) & 0xF] & 0x000F) ^ rk0;
 		if (s0 == ctS[0]) {
 			rk1 = rk1 ^ rk0;
-			s1 = (t4S[t1 >> 12][warpThreadIndexSBox] & 0xF000) ^ (t4S[(t2 >> 8) & 0xf][warpThreadIndexSBox] & 0x0F00) ^ (t4S[(t3 >> 4) & 0xf][warpThreadIndexSBox] & 0x00F0) ^ (t4S[(t0) & 0xF][warpThreadIndexSBox] & 0x000F) ^ rk1;
+			s1 = (t4S[t1 >> 12] & 0xF000) ^ (t4S[(t2 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t3 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t0) & 0xF] & 0x000F) ^ rk1;
 			if (s1 == ctS[1]) {
 				rk2 = rk2 ^ rk1;
-				s2 = (t4S[t2 >> 12][warpThreadIndexSBox] & 0xF000) ^ (t4S[(t3 >> 8) & 0xf][warpThreadIndexSBox] & 0x0F00) ^ (t4S[(t0 >> 4) & 0xf][warpThreadIndexSBox] & 0x00F0) ^ (t4S[(t1) & 0xF][warpThreadIndexSBox] & 0x000F) ^ rk2;
+				s2 = (t4S[t2 >> 12] & 0xF000) ^ (t4S[(t3 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t0 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t1) & 0xF] & 0x000F) ^ rk2;
 				if (s2 == ctS[2]) {
 					rk3 = rk2 ^ rk3;
-					s3 = (t4S[t3 >> 12][warpThreadIndexSBox] & 0xF000) ^ (t4S[(t0 >> 8) & 0xf][warpThreadIndexSBox] & 0x0F00) ^ (t4S[(t1 >> 4) & 0xf][warpThreadIndexSBox] & 0x00F0) ^ (t4S[(t2) & 0xF][warpThreadIndexSBox] & 0x000F) ^ rk3;
+					s3 = (t4S[t3 >> 12] & 0xF000) ^ (t4S[(t0 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t1 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t2) & 0xF] & 0x000F) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! Found key %d : %04x %04x %04x %04x\n", threadIndex, rk0Init, rk1Init, rk2Init, rk3Init);
+						printf("! Found key %d : \n", threadIndex, rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
 		}
 
+		if (threadIndex == 0) {
+			printf("! CT %d : %08x %08x %08x %08x\n", threadIndex, s0, s1, s2, s3);
+		}
+
 		// Overflow
 		if (rk3Init == MAX_U16) {
 			rk2Init++;
+			rk3Init = 0xFFFFFFFF;
 		}
 
-		// Create key as 32 bit unsigned integers
 		rk3Init++;
 	}
 }
@@ -2101,6 +2100,42 @@ int main() {
 		rcon[i] = RCON32[i];
 	}
 
+	// -- Small AES --
+	rk[0] = 0x00000000U;
+	rk[1] = 0x00000000U;
+	rk[2] = 0x00000000U;
+	rk[3] = 0x0000FFFFU;
+
+	pt[0] = 0x00006cbeU;
+	pt[1] = 0x00002e40U;
+	pt[2] = 0x0000e93dU;
+	pt[3] = 0x00007393U;
+
+	ct[0] = 0x00002ec7U;
+	ct[1] = 0x000065c7U;
+	ct[2] = 0x00005adcU;
+	ct[3] = 0x000094e6U;
+
+	u32 *t0Sml, *t1Sml, *t2Sml, *t3Sml, *t4Sml;
+	gpuErrorCheck(cudaMallocManaged(&t0Sml, 16 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&t1Sml, 16 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&t2Sml, 16 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&t3Sml, 16 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&t4Sml, 16 * sizeof(u32)));
+	for (int i = 0; i < 16; i++) {
+		t0Sml[i] = T0_SML[i];
+		t1Sml[i] = T1_SML[i];
+		t2Sml[i] = T2_SML[i];
+		t3Sml[i] = T3_SML[i];
+		t4Sml[i] = T4_SML[i];
+	}
+
+	u32* rconSml;
+	gpuErrorCheck(cudaMallocManaged(&rconSml, RCON_SIZE * sizeof(u32)));
+	for (int i = 0; i < RCON_SIZE; i++) {
+		rconSml[i] = RCON_SML[i];
+	}
+
 	// Calculate range
 	u32* range;
 	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(u32)));
@@ -2126,49 +2161,6 @@ int main() {
 	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
 	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
 	printf("------------------------------------\n");
-
-	// -- Small AES --
-	u16* rkSml;
-	gpuErrorCheck(cudaMallocManaged(&rkSml, 4 * sizeof(u16)));
-	rkSml[0] = 0x0000U;
-	rkSml[1] = 0x0000U;
-	rkSml[2] = 0x0000U;
-	rkSml[3] = 0x0000U;
-
-	u16* ptSml;
-	gpuErrorCheck(cudaMallocManaged(&ptSml, 4 * sizeof(u16)));
-	ptSml[0] = 0x6cbeU;
-	ptSml[1] = 0x2e40U;
-	ptSml[2] = 0xe93dU;
-	ptSml[3] = 0x7393U;
-
-	u16* ctSml;
-	gpuErrorCheck(cudaMallocManaged(&ctSml, 4 * sizeof(u16)));
-	ctSml[0] = 0x2ec7U;
-	ctSml[1] = 0x65c7U;
-	ctSml[2] = 0x5adcU;
-	ctSml[3] = 0x94e6U;
-
-	u16 *t0Sml, *t1Sml, *t2Sml, *t3Sml, *t4Sml;
-	gpuErrorCheck(cudaMallocManaged(&t0Sml, 16 * sizeof(u16)));
-	gpuErrorCheck(cudaMallocManaged(&t1Sml, 16 * sizeof(u16)));
-	gpuErrorCheck(cudaMallocManaged(&t2Sml, 16 * sizeof(u16)));
-	gpuErrorCheck(cudaMallocManaged(&t3Sml, 16 * sizeof(u16)));
-	gpuErrorCheck(cudaMallocManaged(&t4Sml, 16 * sizeof(u16)));
-	for (int i = 0; i < 16; i++) {
-		t0Sml[i] = T0_SML[i];
-		t1Sml[i] = T1_SML[i];
-		t2Sml[i] = T2_SML[i];
-		t3Sml[i] = T3_SML[i];
-		t4Sml[i] = T4_SML[i];
-	}
-
-	u16* rconSml;
-	gpuErrorCheck(cudaMallocManaged(&rconSml, RCON_SIZE * sizeof(u16)));
-	for (int i = 0; i < RCON_SIZE; i++) {
-		rconSml[i] = RCON_SML[i];
-	}
-
 
 	clock_t beginTime = clock();
 
@@ -2212,7 +2204,7 @@ int main() {
 
 	// -- Small AES --
 
-	smallAesExhaustiveSearch<<<BLOCKS, THREADS>>>(ptSml, ctSml, rkSml, t0Sml, t4Sml, rconSml, range);
+	smallAesExhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0Sml, t4Sml, rconSml, range);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
@@ -2248,9 +2240,6 @@ int main() {
 	cudaFree(t4_3);
 	cudaFree(rcon);
 	cudaFree(range);
-	cudaFree(rkSml);
-	cudaFree(ptSml);
-	cudaFree(ctSml);
 	cudaFree(t0Sml);
 	cudaFree(t1Sml);
 	cudaFree(t2Sml);
