@@ -3,9 +3,9 @@ typedef unsigned short			u16;
 typedef unsigned int			u32;
 typedef unsigned long long	    u64;
 
-#define BLOCKS				1
-#define THREADS				32
-#define TWO_POWER_RANGE		6
+#define BLOCKS				1024
+#define THREADS				1024
+#define TWO_POWER_RANGE		31
 
 #define SHARED_MEM_BANK_SIZE			32
 #define S_BOX_BANK_SIZE					8
@@ -51,6 +51,7 @@ void printLastCUDAError(){
 }
 
 __device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
+__device__ u32 arithmetic16bitRightShift(u32 x, u32 n, u32 n2Power) { return (x >> n) | ((x & n2Power) << (-n & 15)); }
 __device__ u32 arithmeticRightShiftBytePerm(u32 x, u32 n) { return __byte_perm(x, x, n); }
 
 u32 T0[TABLE_SIZE] = {

@@ -1938,11 +1938,10 @@ __global__ void smallAesExhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u3
 			rk3 = rk2 ^ rk3;
 
 			// Table based round function
-			t0 = t0S[s0 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s3 & 0xF], SHIFT_3_RIGHT) ^ rk0;
-			t1 = t0S[s1 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s2 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s0 & 0xF], SHIFT_3_RIGHT) ^ rk1;
-			t2 = t0S[s2 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s3 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s1 & 0xF], SHIFT_3_RIGHT) ^ rk2;
-			t3 = t0S[s3 >> 12] ^ arithmeticRightShiftBytePerm(t0S[(s0 >> 8) & 0xF], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[(s1 >> 4) & 0xF], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(t0S[s2 & 0xF], SHIFT_3_RIGHT) ^ rk3;
-
+			t0 = t0S[s0 >> 12] ^ arithmetic16bitRightShift(t0S[(s1 >> 8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s2 >> 4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s3 & 0xF], 12, 4095) ^ rk0;
+			t1 = t0S[s1 >> 12] ^ arithmetic16bitRightShift(t0S[(s2 >> 8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s3 >> 4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s0 & 0xF], 12, 4095) ^ rk1;
+			t2 = t0S[s2 >> 12] ^ arithmetic16bitRightShift(t0S[(s3 >> 8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >> 4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s1 & 0xF], 12, 4095) ^ rk2;
+			t3 = t0S[s3 >> 12] ^ arithmetic16bitRightShift(t0S[(s0 >> 8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s1 >> 4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s2 & 0xF], 12, 4095) ^ rk3;
 			s0 = t0;
 			s1 = t1;
 			s2 = t2;
@@ -1970,14 +1969,10 @@ __global__ void smallAesExhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u3
 					rk3 = rk2 ^ rk3;
 					s3 = (t4S[t3 >> 12] & 0xF000) ^ (t4S[(t0 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t1 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t2) & 0xF] & 0x000F) ^ rk3;
 					if (s3 == ctS[3]) {
-						printf("! Found key %d : \n", threadIndex, rk0Init, rk1Init, rk2Init, rk3Init);
+						printf("! Found key %d : %08x %08x %08x %08x\n", threadIndex, rk0Init, rk1Init, rk2Init, rk3Init);
 					}
 				}
 			}
-		}
-
-		if (threadIndex == 0) {
-			printf("! CT %d : %08x %08x %08x %08x\n", threadIndex, s0, s1, s2, s3);
 		}
 
 		// Overflow
@@ -2104,17 +2099,17 @@ int main() {
 	rk[0] = 0x00000000U;
 	rk[1] = 0x00000000U;
 	rk[2] = 0x00000000U;
-	rk[3] = 0x0000FFFFU;
+	rk[3] = 0x00000000U;
 
 	pt[0] = 0x00006cbeU;
 	pt[1] = 0x00002e40U;
 	pt[2] = 0x0000e93dU;
 	pt[3] = 0x00007393U;
 
-	ct[0] = 0x00002ec7U;
-	ct[1] = 0x000065c7U;
-	ct[2] = 0x00005adcU;
-	ct[3] = 0x000094e6U;
+	ct[0] = 0x0000b4fdU;
+	ct[1] = 0x0000ab56U;
+	ct[2] = 0x0000b8a3U;
+	ct[3] = 0x00008208U;
 
 	u32 *t0Sml, *t1Sml, *t2Sml, *t3Sml, *t4Sml;
 	gpuErrorCheck(cudaMallocManaged(&t0Sml, 16 * sizeof(u32)));
