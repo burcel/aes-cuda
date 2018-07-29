@@ -17,6 +17,17 @@
 // Custom header 
 #include "kernel.h"
 
+// Definitions
+//#define AES_128_ES
+//#define AES_128_CTR
+//#define AES_192_ES
+//#define AES_192_CTR
+//#define AES_256_ES
+#define AES_256_CTR
+//#define SML_AES_ES
+//#define SML_AES_ES_64
+//#define SML_AES_ES_SILENT
+
 //#define INFO 1
 #ifdef  INFO
 __device__ u32 totalThreadCount = 0;
@@ -24,6 +35,7 @@ __device__ u64 totalEncryptions = 0;
 __device__ u32 maxThreadIndex = 0;
 #endif // INFO
 
+#if defined(AES_128_ES)
 // Basic exhaustive search
 // 4 Tables
 __global__ void exhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t1G, u32* t2G, u32* t3G, u32* t4G, u32* rconG, u32* range) {
@@ -897,7 +909,9 @@ __global__ void exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4Shifted
 		rk3Init++;
 	}
 }
+#endif
 
+#if defined(AES_128_CTR)
 // Key expansion from given key set, populate rk[44]
 void keyExpansion(u32* key, u32* rk) {
 
@@ -1150,7 +1164,9 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s2, s3);
 	}
 }
+#endif
 
+#if defined(AES_192_ES)
 // Exhaustive search with one table extended as 32 columns
 // 1 Table [256][32] -> arithmetic shift: __byte_perm function
 // SBox[256] is partly expanded
@@ -1338,7 +1354,9 @@ __global__ void exhaustiveSearch192WithOneTableExtendedSharedMemoryBytePermPartl
 		rk5Init++;
 	}
 }
+#endif
 
+#if defined(AES_192_CTR)
 // Key expansion from given key set, populate rk[52]
 void keyExpansion192(u32* key, u32* rk) {
 
@@ -1497,7 +1515,9 @@ __global__ void counter192WithOneTableExtendedSharedMemoryBytePermPartlyExtended
 	}
 
 }
+#endif
 
+#if defined(AES_256_ES)
 // Exhaustive search with one table extended as 32 columns
 // 1 Table [256][32] -> arithmetic shift: __byte_perm function
 // SBox[256] is partly expanded
@@ -1676,7 +1696,9 @@ __global__ void exhaustiveSearch256WithOneTableExtendedSharedMemoryBytePermPartl
 		rk7Init++;
 	}
 }
+#endif
 
+#if defined(AES_256_CTR)
 // Key expansion from given key set, populate rk[52]
 void keyExpansion256(u32* key, u32* rk) {
 
@@ -1843,8 +1865,9 @@ __global__ void counter256WithOneTableExtendedSharedMemoryBytePermPartlyExtended
 	}
 
 }
+#endif
 
-
+#if defined(SML_AES_ES)
 __global__ void smallAesExhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
 
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1985,26 +2008,282 @@ __global__ void smallAesExhaustiveSearch(u32* pt, u32* ct, u32* rk, u32* t0G, u3
 	}
 }
 
+__global__ void smallAesExhaustiveSearch2Piece32Bits(u32* pt, u32* ct, u32* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[16];
+	__shared__ u32 t4S[16];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u32 ctS[2];
+
+	if (threadIdx.x < 16) {
+		t0S[threadIdx.x] = t0G[threadIdx.x];
+		t4S[threadIdx.x] = t4G[threadIdx.x];
+
+		if (threadIdx.x < RCON_SIZE) {
+			rconS[threadIdx.x] = rconG[threadIdx.x];
+		}
+
+		if (threadIdx.x < 2) {
+			ctS[threadIdx.x] = ct[threadIdx.x];
+
+		}
+	}
+	// </SHARED MEMORY>
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	u32 rk0Init, rk1Init;
+	rk0Init = rk[0];
+	rk1Init = rk[1];
+
+	u32 pt0Init, pt1Init;
+	pt0Init = pt[0];
+	pt1Init = pt[1];
+
+	u32 threadRange = *range;
+	u64 threadRangeStart = (u64)threadIndex * threadRange;
+	rk0Init = rk0Init + threadRangeStart / MAX_U32;
+	rk1Init = rk1Init + threadRangeStart % MAX_U32;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		u32 rk0, rk1;
+		rk0 = rk0Init;
+		rk1 = rk1Init;
+
+		// Create plaintext as 32 bit unsigned integers
+		u32 s0, s1;
+		s0 = pt0Init;
+		s1 = pt1Init;
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rk0;
+		s1 = s1 ^ rk1;
+
+		u32 t0, t1;
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+
+			// Calculate round key
+			rk0 = rk0 ^ ((t4S[(rk1 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk1 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk1) & 0xf] & 0x00f0) ^ (t4S[(rk1 >> 12)] & 0x000f) ^ rconS[roundCount]) << 16;
+			rk0 = rk0 ^ (rk0 >> 16);
+			rk1 = rk1 ^ (rk0 << 16);
+			rk1 = rk1 ^ (rk1 >> 16);
+
+			// Table based round function
+			t0 = t0S[s0 >> 28] ^ arithmetic16bitRightShift(t0S[(s0 >>  8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s1 >> 20) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s1 & 0xF], 12, 4095) ^ (rk0 >> 16);
+			t0 = t0 << 16;
+			t0 = t0S[s0 >> 12] ^ arithmetic16bitRightShift(t0S[(s1 >> 24) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s1 >>  4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[(s0 >> 16) & 0xF], 12, 4095) ^ rk0;
+			t1 = t0S[s1 >> 28] ^ arithmetic16bitRightShift(t0S[(s1 >>  8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >> 20) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s0 & 0xF], 12, 4095) ^ (rk1 >> 16);
+			t1 = t1 << 16;
+			t1 = t0S[s1 >> 12] ^ arithmetic16bitRightShift(t0S[(s0 >> 24) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >>  4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[s1 & 0xF], 12, 4095) ^ rk1;
+			s0 = t0;
+			s1 = t1;
+
+		}
+
+		// Calculate the last round key
+		rk0 = rk0 ^ ((t4S[(rk1 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk1 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk1) & 0xf] & 0x00f0) ^ (t4S[(rk1 >> 12)] & 0x000f) ^ rconS[ROUND_COUNT_MIN_1]) << 16;
+		rk0 = rk0 ^ (rk0 >> 16);
+		
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = (t4S[t0 >> 28] & 0xF000) ^ (t4S[(t0 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t1 >> 20) & 0xf] & 0x00F0) ^ (t4S[(t1) & 0xF] & 0x000F) ^ (rk0 >> 16);
+		s0 = s0 << 16;
+		s0 = (t4S[t0 >> 12] & 0xF000) ^ (t4S[(t1 >> 24) & 0xf] & 0x0F00) ^ (t4S[(t1 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t0 >> 16) & 0xF] & 0x000F) ^ rk0;
+		if (s0 == ctS[0]) {
+			rk1 = rk1 ^ (rk0 << 16);
+			rk1 = rk1 ^ (rk1 >> 16);
+
+			s1 = (t4S[t1 >> 28] & 0xF000) ^ (t4S[(t1 >> 8) & 0xf] & 0x0F00) ^ (t4S[(t0 >> 20) & 0xf] & 0x00F0) ^ (t4S[(t0) & 0xF] & 0x000F) ^ (rk1 >> 16);
+			s1 = s1 << 16;
+			s1 = (t4S[t1 >> 12] & 0xF000) ^ (t4S[(t0 >> 24) & 0xf] & 0x0F00) ^ (t4S[(t0 >> 4) & 0xf] & 0x00F0) ^ (t4S[(t1 >> 16) & 0xF] & 0x000F) ^ rk1;
+
+			if (s1 == ctS[1]) {
+				printf("! Found key %d : %08x %08x %08x %08x\n", threadIndex, rk0Init, rk1Init);
+			}
+		}
+
+		// Overflow
+		if (pt1Init == MAX_U32) {
+			pt0Init++;
+		}
+
+		// Create key as 32 bit unsigned integers
+		pt1Init++;
+	}
+}
+#endif
+
+#if defined(SML_AES_ES_64)
+__global__ void smallAesExhaustiveSearch1Piece64Bits(u64* pt, u64* ct, u64* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[16];
+	__shared__ u32 t4S[16];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u64 ctS;
+
+	if (threadIdx.x < 16) {
+		t0S[threadIdx.x] = t0G[threadIdx.x];
+		t4S[threadIdx.x] = t4G[threadIdx.x];
+
+		if (threadIdx.x < RCON_SIZE) {
+			rconS[threadIdx.x] = rconG[threadIdx.x];
+		}
+
+		if (threadIdx.x < 1) {
+			ctS = *ct;
+
+		}
+	}
+	// </SHARED MEMORY>
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	u64 rkInit, ptInit, temp;
+	rkInit = *rk;
+	ptInit = *pt;
+
+	u32 threadRange = *range;
+	u64 threadRangeStart = (u64)threadIndex * threadRange;
+	rkInit = rkInit + threadRangeStart;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		u64 rk0;
+		rk0 = rkInit;
+
+		// Create plaintext as 32 bit unsigned integers
+		u64 s0;
+		s0 = ptInit;
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rkInit;
+
+		u64 t0;
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+
+			// Calculate round key
+			temp = ((t4S[(rk0 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk0 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk0) & 0xf] & 0x00f0) ^ (t4S[(rk0 >> 12) & 0xf] & 0x000f) ^ rconS[roundCount]);
+			temp = temp << 48;
+			rk0 = rk0 ^ temp;
+			rk0 = rk0 ^ ((rk0 & 0xffff000000000000) >> 16);
+			rk0 = rk0 ^ ((rk0 & 0x0000ffff00000000) >> 16);
+			rk0 = rk0 ^ ((rk0 & 0x00000000ffff0000) >> 16);
+
+			// Table based round function
+			s0 = s0 ^ rk0;
+			temp = t0S[(s0 >> 60) & 0xF] ^ arithmetic16bitRightShift(t0S[(s0 >> 40) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >> 20) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[(s0      ) & 0xF], 12, 4095);
+			t0 = temp << 48;
+			temp = t0S[(s0 >> 44) & 0xF] ^ arithmetic16bitRightShift(t0S[(s0 >> 24) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >>  4) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[(s0 >> 48) & 0xF], 12, 4095);
+			t0 = t0 ^ (temp << 32);
+			temp = t0S[(s0 >> 28) & 0xF] ^ arithmetic16bitRightShift(t0S[(s0 >>  8) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >> 52) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[(s0 >> 32) & 0xF], 12, 4095);
+			t0 = t0 ^ (temp << 16);
+			temp = t0S[(s0 >> 12) & 0xF] ^ arithmetic16bitRightShift(t0S[(s0 >> 56) & 0xF], 4, 15) ^ arithmetic16bitRightShift(t0S[(s0 >> 36) & 0xF], 8, 255) ^ arithmetic16bitRightShift(t0S[(s0 >> 16) & 0xF], 12, 4095);
+			t0 = t0 ^ temp;
+			s0 = t0;
+		}
+
+		// Calculate the last round key
+		temp = ((t4S[(rk0 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk0 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk0) & 0xf] & 0x00f0) ^ (t4S[(rk0 >> 12) & 0xf] & 0x000f) ^ rconS[ROUND_COUNT_MIN_1]);
+		temp = temp << 48;
+		rk0 = rk0 ^ temp;
+		rk0 = rk0 ^ ((rk0 & 0xffff000000000000) >> 16);
+		rk0 = rk0 ^ ((rk0 & 0x0000ffff00000000) >> 16);
+		rk0 = rk0 ^ ((rk0 & 0x00000000ffff0000) >> 16);
+
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = s0 ^ rk0;
+		temp = (t4S[(s0 >> 60) & 0xf] & 0xF000) ^ (t4S[(s0 >> 40) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 20) & 0xf] & 0x00F0) ^ (t4S[(s0      ) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 48);
+		temp = (t4S[(s0 >> 44) & 0xf] & 0xF000) ^ (t4S[(s0 >> 24) & 0xf] & 0x0F00) ^ (t4S[(s0 >>  4) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 48) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 32);
+		temp = (t4S[(s0 >> 28) & 0xf] & 0xF000) ^ (t4S[(s0 >>  8) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 52) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 32) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 16);
+		temp = (t4S[(s0 >> 12) & 0xf] & 0xF000) ^ (t4S[(s0 >> 56) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 36) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 16) & 0xF] & 0x000F);
+		t0 = t0 ^ temp;
+
+		if (t0 == ctS) {
+			printf("! Found key %d : %016llx\n", threadIndex, rkInit);
+		}
+
+		rkInit++;
+	}
+}
+#endif
+
+#if defined(SML_AES_ES_SILENT)
+__global__ void SILENT_shared(bit64 S_d[16], bit64 rkey_d[20], bit16 table0_d[16], bit16 table1_d[16], bit16 table2_d[16], bit16 table3_d[16], int round) {
+	bit64 state = blockIdx.x*blockDim.x + threadIdx.x, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
+	__shared__ bit32 table0[16], table1[16], table2[16], table3[16];
+	__shared__ bit64 rkey[20];
+	__shared__ bit64 S[16];
+	if (threadIdx.x<16)	table0[threadIdx.x] = table0_d[threadIdx.x];
+	if (threadIdx.x<16)	table1[threadIdx.x] = table1_d[threadIdx.x];
+	if (threadIdx.x<16)	table2[threadIdx.x] = table2_d[threadIdx.x];
+	if (threadIdx.x<16)	table3[threadIdx.x] = table3_d[threadIdx.x];
+	if (threadIdx.x<16)	S[threadIdx.x] = S_d[threadIdx.x];
+	if (threadIdx.x<16)	rkey[threadIdx.x] = rkey_d[threadIdx.x];
+	__syncthreads();
+	int i, j;
+	for (j = 0; j < 65536 * 4; j++) {
+		for (i = 0; i < round - 1; i++) {
+			state ^= rkey[i];
+			temp0 = table0[state >> 60] ^ table1[(state >> 40) & 0xf] ^ table2[(state >> 20) & 0xf] ^ table3[(state >> 0) & 0xf];
+			temp1 = table0[(state >> 44) & 0xf] ^ table1[(state >> 24) & 0xf] ^ table2[(state >> 4) & 0xf] ^ table3[(state >> 48) & 0xf];
+			temp2 = table0[(state >> 28) & 0xf] ^ table1[(state >> 8) & 0xf] ^ table2[(state >> 52) & 0xf] ^ table3[(state >> 32) & 0xf];
+			temp3 = table0[(state >> 12) & 0xf] ^ table1[(state >> 56) & 0xf] ^ table2[(state >> 36) & 0xf] ^ table3[(state >> 16) & 0xf];
+			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
+		}
+		state ^= rkey[round - 1];
+		state = S[state & 0xf] ^ (S[(state >> 4) & 0xf] << 4) ^ (S[(state >> 8) & 0xf] << 8) ^ (S[(state >> 12) & 0xf] << 12) ^ (S[(state >> 16) & 0xf] << 16) ^ (S[(state >> 20) & 0xf] << 20) ^ (S[(state >> 24) & 0xf] << 24) ^ (S[(state >> 28) & 0xf] << 28) ^ (S[(state >> 32) & 0xf] << 32) ^ (S[(state >> 36) & 0xf] << 36) ^ (S[(state >> 40) & 0xf] << 40) ^ (S[(state >> 44) & 0xf] << 44) ^ (S[(state >> 48) & 0xf] << 48) ^ (S[(state >> 52) & 0xf] << 52) ^ (S[(state >> 56) & 0xf] << 56) ^ (S[(state >> 60) & 0xf] << 60);
+		temp0 = (state & 0xf000f000f000f000);
+		temp1 = (state & 0x0f000f000f000f00);
+		temp2 = (state & 0x00f000f000f000f0);
+		temp3 = (state & 0x000f000f000f000f);
+		temp1 = ROTL(temp1, 16);
+		temp2 = ROTL(temp2, 32);
+		temp3 = ROTL(temp3, 48);
+		state = temp0 ^ temp1 ^ temp2 ^ temp3;
+	}
+	// DEBUG
+	if (state == 0x41a18e40098ad26a) rkey_d[0] = state;
+}
+#endif
+
 int main() {
 
-	// <AES-128>
-	// Allocate key
-	u32* rk;
-	gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
-	rk[0] = 0x00000000U;
-	rk[1] = 0x00000000U;
-	rk[2] = 0x00000000U;
-	rk[3] = 0x00000000U;
-
-	// aes-cipher-internals.xlsx
-	//rk[0] = 0x2B7E1516U;
-	//rk[1] = 0x28AED2A6U;
-	//rk[2] = 0xABF71588U;
-	//rk[3] = 0x09CF4F3CU;
-
-	// Allocate plaintext
-	u32* pt;
+	#if defined(AES_128_ES) || defined(AES_128_CTR) || defined(AES_192_ES) || defined(AES_192_CTR) || defined(AES_256_ES) || defined(AES_256_CTR)
+	u32 *pt, *ct;
 	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&ct, 4 * sizeof(u32)));
+	
 	//pt[0] = 0x00000000U;
 	//pt[1] = 0x00000000U;
 	//pt[2] = 0x00000000U;
@@ -2017,8 +2296,6 @@ int main() {
 	pt[3] = 0x7393172aU;
 
 	// Allocate ciphertext
-	u32* ct;
-	gpuErrorCheck(cudaMallocManaged(&ct, 4 * sizeof(u32)));
 	ct[0] = 0xF3EED1BDU;
 	ct[1] = 0xB5D2A03CU;
 	ct[2] = 0x064B5A7EU;
@@ -2030,40 +2307,12 @@ int main() {
 	//ct[2] = 0xDC118597U;
 	//ct[3] = 0x196A0B32U;
 
-	// CTR round keys
-	u32* roundKeys;
-	gpuErrorCheck(cudaMallocManaged(&roundKeys, TABLE_BASED_KEY_LIST_ROW_SIZE * sizeof(u32)));
-	// </AES-128>
-
-	// <AES-192>
-	u32* rk192;
-	gpuErrorCheck(cudaMallocManaged(&rk192, 6 * sizeof(u32)));
-	rk192[0] = 0x8e73b0f7U;
-	rk192[1] = 0xda0e6452U;
-	rk192[2] = 0xc810f32bU;
-	rk192[3] = 0x809079e5U;
-	rk192[4] = 0x62f8ead2U;
-	rk192[5] = 0x522c6b7bU;
-	// CTR round keys
-	u32* roundKeys192;
-	gpuErrorCheck(cudaMallocManaged(&roundKeys192, TABLE_BASED_KEY_LIST_SIZE_192 * sizeof(u32)));
-	// </AES-192>
-
-	// <AES-256>
-	u32* rk256;
-	gpuErrorCheck(cudaMallocManaged(&rk256, 8 * sizeof(u32)));
-	rk256[0] = 0x603deb10U;
-	rk256[1] = 0x15ca71beU;
-	rk256[2] = 0x2b73aef0U;
-	rk256[3] = 0x857d7781U;
-	rk256[4] = 0x1f352c07U;
-	rk256[5] = 0x3b6108d7U;
-	rk256[6] = 0x2d9810a3U;
-	rk256[7] = 0x0914dff4U;
-	// CTR round keys
-	u32* roundKeys256;
-	gpuErrorCheck(cudaMallocManaged(&roundKeys256, TABLE_BASED_KEY_LIST_SIZE_256 * sizeof(u32)));
-	// </AES-192>
+	// Allocate RCON values
+	u32* rcon;
+	gpuErrorCheck(cudaMallocManaged(&rcon, RCON_SIZE * sizeof(u32)));
+	for (int i = 0; i < RCON_SIZE; i++) {
+		rcon[i] = RCON32[i];
+	}
 
 	// Allocate Tables
 	u32 *t0, *t1, *t2, *t3, *t4, *t4_0, *t4_1, *t4_2, *t4_3;
@@ -2087,30 +2336,100 @@ int main() {
 		t4_2[i] = T4_2[i];
 		t4_3[i] = T4_3[i];
 	}
+	#endif 
 
-	// Allocate RCON values
-	u32* rcon;
-	gpuErrorCheck(cudaMallocManaged(&rcon, RCON_SIZE * sizeof(u32)));
-	for (int i = 0; i < RCON_SIZE; i++) {
-		rcon[i] = RCON32[i];
-	}
-
-	// -- Small AES --
+	#if defined(AES_128_ES) || defined(AES_128_CTR)
+	u32* rk;
+	gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
 	rk[0] = 0x00000000U;
 	rk[1] = 0x00000000U;
 	rk[2] = 0x00000000U;
 	rk[3] = 0x00000000U;
 
-	pt[0] = 0x00006cbeU;
-	pt[1] = 0x00002e40U;
-	pt[2] = 0x0000e93dU;
-	pt[3] = 0x00007393U;
+	// aes-cipher-internals.xlsx
+	//rk[0] = 0x2B7E1516U;
+	//rk[1] = 0x28AED2A6U;
+	//rk[2] = 0xABF71588U;
+	//rk[3] = 0x09CF4F3CU;
+	#endif 
 
-	ct[0] = 0x0000b4fdU;
-	ct[1] = 0x0000ab56U;
-	ct[2] = 0x0000b8a3U;
-	ct[3] = 0x00008208U;
+	#if defined(AES_128_CTR)
+	u32* roundKeys;
+	gpuErrorCheck(cudaMallocManaged(&roundKeys, TABLE_BASED_KEY_LIST_ROW_SIZE * sizeof(u32)));
+	#endif 
 
+	#if defined(AES_192_ES) || defined(AES_192_CTR)
+	u32* rk192;
+	gpuErrorCheck(cudaMallocManaged(&rk192, 6 * sizeof(u32)));
+	rk192[0] = 0x8e73b0f7U;
+	rk192[1] = 0xda0e6452U;
+	rk192[2] = 0xc810f32bU;
+	rk192[3] = 0x809079e5U;
+	rk192[4] = 0x62f8ead2U;
+	rk192[5] = 0x522c6b7bU;
+	#endif 
+
+	// CTR round keys
+	#if defined(AES_192_CTR)
+	u32* roundKeys192;
+	gpuErrorCheck(cudaMallocManaged(&roundKeys192, TABLE_BASED_KEY_LIST_SIZE_192 * sizeof(u32)));
+	#endif 
+
+	#if defined(AES_256_ES) || defined(AES_256_CTR)
+	u32* rk256;
+	gpuErrorCheck(cudaMallocManaged(&rk256, 8 * sizeof(u32)));
+	rk256[0] = 0x603deb10U;
+	rk256[1] = 0x15ca71beU;
+	rk256[2] = 0x2b73aef0U;
+	rk256[3] = 0x857d7781U;
+	rk256[4] = 0x1f352c07U;
+	rk256[5] = 0x3b6108d7U;
+	rk256[6] = 0x2d9810a3U;
+	rk256[7] = 0x0914dff4U;
+	#endif 
+
+	#if defined(AES_256_CTR)
+	u32* roundKeys256;
+	gpuErrorCheck(cudaMallocManaged(&roundKeys256, TABLE_BASED_KEY_LIST_SIZE_256 * sizeof(u32)));
+	#endif 
+
+	
+	#if defined(SML_AES_ES)
+	// -- Small AES --
+	u32 *rk, *pt, *ct;
+	gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&ct, 4 * sizeof(u32)));
+
+	rk[0] = 0x00000000U;
+	rk[1] = 0x00000000U;
+	rk[2] = 0x00000000U;
+	rk[3] = 0x00000000U;
+
+	pt[0] = 0x6cbe2e40U;
+	pt[1] = 0xe93d7393U;
+	pt[2] = 0x00000000U;
+	pt[3] = 0x00000000U;
+
+	ct[0] = 0xb4fdab56U;
+	ct[1] = 0xb8a38208U;
+	ct[2] = 0x00000000U;
+	ct[3] = 0x00000000U;
+	#endif
+
+	#if defined(SML_AES_ES_64)
+	// 64bits
+	u64 *rk64, *pt64, *ct64;
+	gpuErrorCheck(cudaMallocManaged(&rk64, 1 * sizeof(u64)));
+	gpuErrorCheck(cudaMallocManaged(&pt64, 1 * sizeof(u64)));
+	gpuErrorCheck(cudaMallocManaged(&ct64, 1 * sizeof(u64)));
+
+	*rk64 = 0x0000000000000000U;
+	*pt64 = 0x6cbe2e40e93d7393U;
+	*ct64 = 0xb4fdab56b8a38208U;
+	#endif 
+
+	#if defined(SML_AES_ES) | defined(SML_AES_ES_64)
 	u32 *t0Sml, *t1Sml, *t2Sml, *t3Sml, *t4Sml;
 	gpuErrorCheck(cudaMallocManaged(&t0Sml, 16 * sizeof(u32)));
 	gpuErrorCheck(cudaMallocManaged(&t1Sml, 16 * sizeof(u32)));
@@ -2130,13 +2449,34 @@ int main() {
 	for (int i = 0; i < RCON_SIZE; i++) {
 		rconSml[i] = RCON_SML[i];
 	}
+	#endif 
+
+	#if defined(SML_AES_ES_SILENT)
+	key_schedule(0);
+	bit16 *table0_d, *table1_d, *table2_d, *table3_d;
+	bit64 *S_d, *rkey_d;
+	gpuErrorCheck(cudaMallocManaged(&table0_d, 16 * sizeof(bit16)));
+	gpuErrorCheck(cudaMallocManaged(&table1_d, 16 * sizeof(bit16)));
+	gpuErrorCheck(cudaMallocManaged(&table2_d, 16 * sizeof(bit16)));
+	gpuErrorCheck(cudaMallocManaged(&table3_d, 16 * sizeof(bit16)));
+	gpuErrorCheck(cudaMallocManaged(&S_d,      16 * sizeof(bit64)));
+	gpuErrorCheck(cudaMallocManaged(&rkey_d,   20 * sizeof(bit64)));
+	for (int i = 0; i < 16; i++) {
+		table0_d[i] = table0[i];
+		table1_d[i] = table1[i];
+		table2_d[i] = table2[i];
+		table3_d[i] = table3[i];
+		S_d[i] = S[i];
+	}
+	for (int i = 0; i < 20; i++) {
+		rkey_d[i] = rkey[i];
+	}
+	#endif
 
 	// Calculate range
 	u32* range;
 	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(u32)));
-
 	int threadCount = BLOCKS * THREADS;
-	
 	double keyRange = pow(2, TWO_POWER_RANGE);
 	double threadRange = keyRange / threadCount;
 	*range = ceil(threadRange);
@@ -2152,14 +2492,50 @@ int main() {
 	printf("Each Thread Key Range (kernel)     : %d\n", range[0]);
 	printf("Total encryptions                  : %.0f\n", ceil(threadRange) * threadCount);
 	printf("------------------------------------\n");
-	printf("Initial Key                        : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
+	#if defined(AES_128_ES)
 	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
 	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
+	#endif 
+	#if defined(AES_128_CTR)
+	printf("Initial Plaintext                  : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
+	#endif 
+	#if defined(AES_192_ES)
+	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x %08x %08x\n", rk192[0], rk192[1], rk192[2], rk192[3], rk192[4], rk192[5]);
+	#endif 
+	#if defined(AES_192_CTR)
+	printf("Initial Plaintext                  : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x %08x %08x\n", rk192[0], rk192[1], rk192[2], rk192[3], rk192[4], rk192[5]);
+	#endif 
+	#if defined(AES_256_ES)
+	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x %08x %08x %08x %08x\n", rk256[0], rk256[1], rk256[2], rk256[3], rk256[4], rk256[5], rk256[6], rk256[7]);
+	#endif 
+	#if defined(AES_256_CTR)
+	printf("Initial Plaintext                  : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x %08x %08x %08x %08x\n", rk256[0], rk256[1], rk256[2], rk256[3], rk256[4], rk256[5], rk256[6], rk256[7]);
+	#endif
+	#if defined(SML_AES_ES)
+	printf("Plaintext                          : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
+	printf("Ciphertext                         : %08x %08x %08x %08x\n", ct[0], ct[1], ct[2], ct[3]);
+	printf("Initial Key                        : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
+	#endif
+	#if defined(SML_AES_ES_64)
+	printf("Plaintext                          : %016llx\n", *pt64);
+	printf("Ciphertext                         : %016llx\n", *ct64);
+	printf("Initial Key                        : %016llx\n", *rk64);
+	#endif
+	#if defined(SML_AES_ES_SILENT)
+	#endif
 	printf("------------------------------------\n");
 
 	clock_t beginTime = clock();
 
-	// -- AES-128 Exhaustive Search --
+	#if defined(AES_128_ES)
 
 	//exhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t1, t2, t3, t4, rcon, range);
 
@@ -2169,37 +2545,56 @@ int main() {
 
 	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4, rcon, range);
 
-	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS >>>(pt, ct, rk, t0, t4, rcon, range);
+	// Fastest
+	exhaustiveSearchWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS >>>(pt, ct, rk, t0, t4, rcon, range);
 
 	//exhaustiveSearchWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, ct, rk, t0, t4_0, t4_1, t4_2, t4_3, rcon, range);
+	#endif
 
 	// -- AES-128 CTR --
+	#if defined(AES_128_CTR)
 
-	//keyExpansion(rk, roundKeys);
+	keyExpansion(rk, roundKeys);
 
-	//counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
+	counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4, range);
 
 	//counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox<<<BLOCKS, THREADS>>>(pt, roundKeys, t0, t4_0, t4_1, t4_2, t4_3, range);
+	#endif
 
-	// -- AES-192 Exhaustive Search --
-	//exhaustiveSearch192WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, rk192, t0, t4, rcon, range);
+	#if defined(AES_192_ES)
+	exhaustiveSearch192WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, rk192, t0, t4, rcon, range);
+	#endif
 
-	// -- AES-192 CTR --
-	//keyExpansion192(rk192, roundKeys192);
+	#if defined(AES_192_CTR)
+	keyExpansion192(rk192, roundKeys192);
+	counter192WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys192, t0, t4, range);
+	#endif
 
-	//counter192WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys192, t0, t4, range);
+	#if defined(AES_256_ES)
+	exhaustiveSearch256WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, rk256, t0, t4, rcon, range);
+	#endif
 
-	// -- AES-256 Exhaustive Search --
-	//exhaustiveSearch256WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, rk256, t0, t4, rcon, range);
-
-	// -- AES-256 CTR --
-	//keyExpansion256(rk256, roundKeys256);
-
-	//counter256WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys256, t0, t4, range);
+	#if defined(AES_256_CTR)
+	keyExpansion256(rk256, roundKeys256);
+	counter256WithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, roundKeys256, t0, t4, range);
+	#endif
 
 	// -- Small AES --
 
-	smallAesExhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0Sml, t4Sml, rconSml, range);
+	#if defined(SML_AES_ES)
+	//smallAesExhaustiveSearch<<<BLOCKS, THREADS>>>(pt, ct, rk, t0Sml, t4Sml, rconSml, range);
+
+	//smallAesExhaustiveSearch2Piece32Bits<<<BLOCKS, THREADS>>>(pt, ct, rk, t0Sml, t4Sml, rconSml, range);
+	#endif
+
+	#if defined(SML_AES_ES_64)
+	smallAesExhaustiveSearch1Piece64Bits<<<BLOCKS, THREADS>>>(pt64, ct64, rk64, t0Sml, t4Sml, rconSml, range);
+	#endif
+
+	#if defined(SML_AES_ES_SILENT)
+	SILENT<<<64, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	//SILENT_shared<<<64, 1024 >> >(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	#endif
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
@@ -2221,7 +2616,8 @@ int main() {
 	#endif // INFO
 
 	// Free alocated arrays
-	cudaFree(rk);
+	cudaFree(range);
+	#if defined(AES_128_ES) || defined(AES_128_CTR) || defined(AES_192_ES) || defined(AES_192_CTR) || defined(AES_256_ES) || defined(AES_256_CTR)
 	cudaFree(pt);
 	cudaFree(ct);
 	cudaFree(t0);
@@ -2234,13 +2630,63 @@ int main() {
 	cudaFree(t4_2);
 	cudaFree(t4_3);
 	cudaFree(rcon);
-	cudaFree(range);
+	#endif
+
+	#if defined(AES_128_ES)
+	cudaFree(rk);
+	#endif
+
+	#if defined(AES_128_CTR)
+	cudaFree(rk);
+	cudaFree(roundKeys);
+	#endif
+
+	#if defined(AES_192_ES)
+	cudaFree(rk192);
+	#endif
+
+	#if defined(AES_128_CTR)
+	cudaFree(rk192);
+	cudaFree(roundKeys192);
+	#endif
+
+	#if defined(AES_256_ES)
+	cudaFree(rk256);
+	#endif
+
+	#if defined(AES_256_CTR)
+	cudaFree(rk256);
+	cudaFree(roundKeys256);
+	#endif
+
+	#if defined(SML_AES_ES) || defined(SML_AES_ES_64)
 	cudaFree(t0Sml);
 	cudaFree(t1Sml);
 	cudaFree(t2Sml);
 	cudaFree(t3Sml);
 	cudaFree(t4Sml);
 	cudaFree(rconSml);
+	#endif
+
+	#if defined(SML_AES_ES)
+	cudaFree(rk);
+	cudaFree(pt);
+	cudaFree(ct);
+	#endif
+
+	#if defined(SML_AES_ES_64)
+	cudaFree(rk64);
+	cudaFree(pt64);
+	cudaFree(ct64);
+	#endif
+
+	#if defined(SML_AES_ES_SILENT)
+	cudaFree(table0_d);
+	cudaFree(table1_d);
+	cudaFree(table2_d);
+	cudaFree(table3_d);
+	cudaFree(S_d);
+	#endif
 	
 	return 0;
 }
