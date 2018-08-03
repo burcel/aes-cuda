@@ -23,9 +23,9 @@
 //#define AES_192_ES
 //#define AES_192_CTR
 //#define AES_256_ES
-#define AES_256_CTR
+//#define AES_256_CTR
 //#define SML_AES_ES
-//#define SML_AES_ES_64
+#define SML_AES_ES_64
 //#define SML_AES_ES_SILENT
 
 //#define INFO 1
@@ -2236,9 +2236,147 @@ __global__ void smallAesExhaustiveSearch1Piece64Bits(u64* pt, u64* ct, u64* rk, 
 		rkInit++;
 	}
 }
+
+__global__ void smallAesExhaustiveSearch1Piece64BitsROTL(u64* pt, u64* ct, u64* rk, u32* t0G, u32* t4G, u32* rconG, u32* range) {
+
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+
+	// <SHARED MEMORY>
+	__shared__ u32 t0S[16];
+	__shared__ u32 t4S[16];
+	__shared__ u32 rconS[RCON_SIZE];
+	__shared__ u64 ctS;
+
+	if (threadIdx.x < 16) {
+		t0S[threadIdx.x] = t0G[threadIdx.x];
+		t4S[threadIdx.x] = t4G[threadIdx.x];
+
+		if (threadIdx.x < RCON_SIZE) {
+			rconS[threadIdx.x] = rconG[threadIdx.x];
+		}
+
+		if (threadIdx.x < 1) {
+			ctS = *ct;
+
+		}
+	}
+	// </SHARED MEMORY>
+
+	#ifdef  INFO
+	atomicAdd(&totalThreadCount, 1);
+	atomicMax(&maxThreadIndex, threadIndex);
+	#endif // INFO
+
+	// Wait until every thread is ready
+	__syncthreads();
+
+	u64 rkInit, ptInit, temp;
+	rkInit = *rk;
+	ptInit = *pt;
+
+	u32 threadRange = *range;
+	u64 threadRangeStart = (u64)threadIndex * threadRange;
+	rkInit = rkInit + threadRangeStart;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+
+		#ifdef  INFO
+		atomicAdd(&totalEncryptions, 1);
+		#endif // INFO
+
+		u64 rk0;
+		rk0 = rkInit;
+
+		// Create plaintext as 32 bit unsigned integers
+		u64 s0;
+		s0 = ptInit;
+
+		// First round just XORs input with key.
+		s0 = s0 ^ rkInit;
+
+		u64 t0;
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+
+			// Calculate round key
+			temp = ((t4S[(rk0 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk0 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk0) & 0xf] & 0x00f0) ^ (t4S[(rk0 >> 12) & 0xf] & 0x000f) ^ rconS[roundCount]);
+			temp = temp << 48;
+			rk0 = rk0 ^ temp;
+			rk0 = rk0 ^ ((rk0 & 0xffff000000000000) >> 16);
+			rk0 = rk0 ^ ((rk0 & 0x0000ffff00000000) >> 16);
+			rk0 = rk0 ^ ((rk0 & 0x00000000ffff0000) >> 16);
+
+			// Table based round function
+			s0 = s0 ^ rk0;
+			temp = t0S[(s0 >> 60) & 0xF] ^ ROTL16(t0S[(s0 >> 40) & 0xF], 4) ^ ROTL16(t0S[(s0 >> 20) & 0xF], 8) ^ ROTL16(t0S[(s0      ) & 0xF], 12);
+			t0 = temp << 48;
+			temp = t0S[(s0 >> 44) & 0xF] ^ ROTL16(t0S[(s0 >> 24) & 0xF], 4) ^ ROTL16(t0S[(s0 >>  4) & 0xF], 8) ^ ROTL16(t0S[(s0 >> 48) & 0xF], 12);
+			t0 = t0 ^ (temp << 32);
+			temp = t0S[(s0 >> 28) & 0xF] ^ ROTL16(t0S[(s0 >>  8) & 0xF], 4) ^ ROTL16(t0S[(s0 >> 52) & 0xF], 8) ^ ROTL16(t0S[(s0 >> 32) & 0xF], 12);
+			t0 = t0 ^ (temp << 16);
+			temp = t0S[(s0 >> 12) & 0xF] ^ ROTL16(t0S[(s0 >> 56) & 0xF], 4) ^ ROTL16(t0S[(s0 >> 36) & 0xF], 8) ^ ROTL16(t0S[(s0 >> 16) & 0xF], 12);
+			t0 = t0 ^ temp;
+			s0 = t0;
+		}
+
+		// Calculate the last round key
+		temp = ((t4S[(rk0 >> 8) & 0xf] & 0xf000) ^ (t4S[(rk0 >> 4) & 0xf] & 0x0f00) ^ (t4S[(rk0) & 0xf] & 0x00f0) ^ (t4S[(rk0 >> 12) & 0xf] & 0x000f) ^ rconS[ROUND_COUNT_MIN_1]);
+		temp = temp << 48;
+		rk0 = rk0 ^ temp;
+		rk0 = rk0 ^ ((rk0 & 0xffff000000000000) >> 16);
+		rk0 = rk0 ^ ((rk0 & 0x0000ffff00000000) >> 16);
+		rk0 = rk0 ^ ((rk0 & 0x00000000ffff0000) >> 16);
+
+		// Last round uses s-box directly and XORs to produce output.
+		s0 = s0 ^ rk0;
+		temp = (t4S[(s0 >> 60) & 0xf] & 0xF000) ^ (t4S[(s0 >> 40) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 20) & 0xf] & 0x00F0) ^ (t4S[(s0) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 48);
+		temp = (t4S[(s0 >> 44) & 0xf] & 0xF000) ^ (t4S[(s0 >> 24) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 4) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 48) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 32);
+		temp = (t4S[(s0 >> 28) & 0xf] & 0xF000) ^ (t4S[(s0 >> 8) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 52) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 32) & 0xF] & 0x000F);
+		t0 = t0 ^ (temp << 16);
+		temp = (t4S[(s0 >> 12) & 0xf] & 0xF000) ^ (t4S[(s0 >> 56) & 0xf] & 0x0F00) ^ (t4S[(s0 >> 36) & 0xf] & 0x00F0) ^ (t4S[(s0 >> 16) & 0xF] & 0x000F);
+		t0 = t0 ^ temp;
+
+		//if (threadIndex == 0 && rangeCount == 0) {
+		//	printf("%016llx\n", t0);
+		//}
+
+		if (t0 == ctS) {
+			printf("! Found key %d : %016llx\n", threadIndex, rkInit);
+		}
+
+		rkInit++;
+	}
+}
 #endif
 
 #if defined(SML_AES_ES_SILENT)
+__global__ void SILENT(bit64 S[16], bit64 rkey[20], bit16 table0[16], bit16 table1[16], bit16 table2[16], bit16 table3[16], int round) {
+	bit64 state = 0, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
+	for (int j = 0; j < 65536; j++) {
+		for (int i = 0; i < round - 1; i++) {
+			state ^= rkey[i];
+			temp0 = table0[state >> 60] ^ table1[(state >> 40) & 0xf] ^ table2[(state >> 20) & 0xf] ^ table3[(state >> 0) & 0xf];
+			temp1 = table0[(state >> 44) & 0xf] ^ table1[(state >> 24) & 0xf] ^ table2[(state >> 4) & 0xf] ^ table3[(state >> 48) & 0xf];
+			temp2 = table0[(state >> 28) & 0xf] ^ table1[(state >> 8) & 0xf] ^ table2[(state >> 52) & 0xf] ^ table3[(state >> 32) & 0xf];
+			temp3 = table0[(state >> 12) & 0xf] ^ table1[(state >> 56) & 0xf] ^ table2[(state >> 36) & 0xf] ^ table3[(state >> 16) & 0xf];
+			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
+		}
+		state ^= rkey[round - 1];
+		state = S[state & 0xf] ^ (S[(state >> 4) & 0xf] << 4) ^ (S[(state >> 8) & 0xf] << 8) ^ (S[(state >> 12) & 0xf] << 12) ^ (S[(state >> 16) & 0xf] << 16) ^ (S[(state >> 20) & 0xf] << 20) ^ (S[(state >> 24) & 0xf] << 24) ^ (S[(state >> 28) & 0xf] << 28) ^ (S[(state >> 32) & 0xf] << 32) ^ (S[(state >> 36) & 0xf] << 36) ^ (S[(state >> 40) & 0xf] << 40) ^ (S[(state >> 44) & 0xf] << 44) ^ (S[(state >> 48) & 0xf] << 48) ^ (S[(state >> 52) & 0xf] << 52) ^ (S[(state >> 56) & 0xf] << 56) ^ (S[(state >> 60) & 0xf] << 60);
+		temp0 = (state & 0xf000f000f000f000);
+		temp1 = (state & 0x0f000f000f000f00);
+		temp2 = (state & 0x00f000f000f000f0);
+		temp3 = (state & 0x000f000f000f000f);
+		temp1 = ROTL(temp1, 16);
+		temp2 = ROTL(temp2, 32);
+		temp3 = ROTL(temp3, 48);
+		state = temp0 ^ temp1 ^ temp2 ^ temp3;
+	}
+	// DEBUG
+	if (state == 0x41a18e40098ad26a) rkey[0] = state;
+}
 __global__ void SILENT_shared(bit64 S_d[16], bit64 rkey_d[20], bit16 table0_d[16], bit16 table1_d[16], bit16 table2_d[16], bit16 table3_d[16], int round) {
 	bit64 state = blockIdx.x*blockDim.x + threadIdx.x, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
 	__shared__ bit32 table0[16], table1[16], table2[16], table3[16];
@@ -2252,13 +2390,46 @@ __global__ void SILENT_shared(bit64 S_d[16], bit64 rkey_d[20], bit16 table0_d[16
 	if (threadIdx.x<16)	rkey[threadIdx.x] = rkey_d[threadIdx.x];
 	__syncthreads();
 	int i, j;
-	for (j = 0; j < 65536 * 4; j++) {
+	for (j = 0; j < 65536 / 2; j++) {
 		for (i = 0; i < round - 1; i++) {
 			state ^= rkey[i];
 			temp0 = table0[state >> 60] ^ table1[(state >> 40) & 0xf] ^ table2[(state >> 20) & 0xf] ^ table3[(state >> 0) & 0xf];
 			temp1 = table0[(state >> 44) & 0xf] ^ table1[(state >> 24) & 0xf] ^ table2[(state >> 4) & 0xf] ^ table3[(state >> 48) & 0xf];
 			temp2 = table0[(state >> 28) & 0xf] ^ table1[(state >> 8) & 0xf] ^ table2[(state >> 52) & 0xf] ^ table3[(state >> 32) & 0xf];
 			temp3 = table0[(state >> 12) & 0xf] ^ table1[(state >> 56) & 0xf] ^ table2[(state >> 36) & 0xf] ^ table3[(state >> 16) & 0xf];
+			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
+		}
+		state ^= rkey[round - 1];
+		state = S[state & 0xf] ^ (S[(state >> 4) & 0xf] << 4) ^ (S[(state >> 8) & 0xf] << 8) ^ (S[(state >> 12) & 0xf] << 12) ^ (S[(state >> 16) & 0xf] << 16) ^ (S[(state >> 20) & 0xf] << 20) ^ (S[(state >> 24) & 0xf] << 24) ^ (S[(state >> 28) & 0xf] << 28) ^ (S[(state >> 32) & 0xf] << 32) ^ (S[(state >> 36) & 0xf] << 36) ^ (S[(state >> 40) & 0xf] << 40) ^ (S[(state >> 44) & 0xf] << 44) ^ (S[(state >> 48) & 0xf] << 48) ^ (S[(state >> 52) & 0xf] << 52) ^ (S[(state >> 56) & 0xf] << 56) ^ (S[(state >> 60) & 0xf] << 60);
+		temp0 = (state & 0xf000f000f000f000);
+		temp1 = (state & 0x0f000f000f000f00);
+		temp2 = (state & 0x00f000f000f000f0);
+		temp3 = (state & 0x000f000f000f000f);
+		temp1 = ROTL(temp1, 16);
+		temp2 = ROTL(temp2, 32);
+		temp3 = ROTL(temp3, 48);
+		state = temp0 ^ temp1 ^ temp2 ^ temp3;
+	}
+	// DEBUG
+	if (state == 0x41a18e40098ad26a) rkey_d[0] = state;
+}
+__global__ void SILENT_shared_One_Table(bit64 S_d[16], bit64 rkey_d[20], bit16 table0_d[16], int round) {
+	bit64 state = blockIdx.x*blockDim.x + threadIdx.x, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
+	__shared__ bit32 table0[16];
+	__shared__ bit64 rkey[20];
+	__shared__ bit64 S[16];
+	if (threadIdx.x<16)	table0[threadIdx.x] = table0_d[threadIdx.x];
+	if (threadIdx.x<16)	S[threadIdx.x] = S_d[threadIdx.x];
+	if (threadIdx.x<16)	rkey[threadIdx.x] = rkey_d[threadIdx.x];
+	__syncthreads();
+	int i, j;
+	for (j = 0; j < 65536 / 2; j++) {
+		for (i = 0; i < round - 1; i++) {
+			state ^= rkey[i];
+			temp0 = table0[(state >> 60)      ] ^ arithmeticRightShiftBytePerm(table0[(state >> 40) & 0xf], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 20) & 0xf], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >>  0) & 0xf], SHIFT_3_RIGHT);
+			temp1 = table0[(state >> 44) & 0xf] ^ arithmeticRightShiftBytePerm(table0[(state >> 24) & 0xf], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >>  4) & 0xf], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 48) & 0xf], SHIFT_3_RIGHT);
+			temp2 = table0[(state >> 28) & 0xf] ^ arithmeticRightShiftBytePerm(table0[(state >>  8) & 0xf], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 52) & 0xf], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 32) & 0xf], SHIFT_3_RIGHT);
+			temp3 = table0[(state >> 12) & 0xf] ^ arithmeticRightShiftBytePerm(table0[(state >> 56) & 0xf], SHIFT_1_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 36) & 0xf], SHIFT_2_RIGHT) ^ arithmeticRightShiftBytePerm(table0[(state >> 16) & 0xf], SHIFT_3_RIGHT);
 			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
 		}
 		state ^= rkey[round - 1];
@@ -2426,7 +2597,7 @@ int main() {
 
 	*rk64 = 0x0000000000000000U;
 	*pt64 = 0x6cbe2e40e93d7393U;
-	*ct64 = 0xb4fdab56b8a38208U;
+	*ct64 = 0x5cab85fb690d5bd4U;
 	#endif 
 
 	#if defined(SML_AES_ES) | defined(SML_AES_ES_64)
@@ -2588,12 +2759,14 @@ int main() {
 	#endif
 
 	#if defined(SML_AES_ES_64)
-	smallAesExhaustiveSearch1Piece64Bits<<<BLOCKS, THREADS>>>(pt64, ct64, rk64, t0Sml, t4Sml, rconSml, range);
+	//smallAesExhaustiveSearch1Piece64Bits<<<BLOCKS, THREADS>>>(pt64, ct64, rk64, t0Sml, t4Sml, rconSml, range);
+	smallAesExhaustiveSearch1Piece64BitsROTL<<<BLOCKS, THREADS>>>(pt64, ct64, rk64, t0Sml, t4Sml, rconSml, range);
 	#endif
 
 	#if defined(SML_AES_ES_SILENT)
-	SILENT<<<64, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
-	//SILENT_shared<<<64, 1024 >> >(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	//SILENT<<<64, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	//SILENT_shared<<<64, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	SILENT_shared_One_Table<<<64, 1024>>>(S_d, rkey_d, table0_d, 10);
 	#endif
 
 	cudaDeviceSynchronize();
