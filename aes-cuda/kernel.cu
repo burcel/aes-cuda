@@ -38,6 +38,10 @@ __device__ u32 maxThreadIndex = 0;
 #ifdef  SML_AES_64
 __device__ u64 ciphertextResult = 0;
 __device__ u64 totalEncryptions = 0;
+//#define PROB_1
+//#define PROB_2
+//#define PROB_3
+//#define PROB_4
 #endif
 
 #if defined(AES_128_ES)
@@ -2158,7 +2162,7 @@ void keyExpansion(u64 key, u64 *roundKeys64) {
 	}
 }
 
-__global__ void smallAesCalculate(u64* roundKeys, u16* t0G, u16* t4G, u32* range) {
+__global__ void smallAesCalculate(u64* roundKeys, u16* t0G, u16* t4G, u32* range, u32* prob) {
 	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	// <SHARED MEMORY>
 	__shared__ u16 t0S[16], t4S[16];
@@ -2209,7 +2213,7 @@ __global__ void smallAesCalculate(u64* roundKeys, u16* t0G, u16* t4G, u32* range
 			//	printf("roundCount: %d temp: %016llx\n", roundCount, temp);
 			//}
 			temp = temp << 16;
-			//temp ^= t0S[(state >> 12) & 0xF] ^ ROTL16(t0S[(state >> 56) & 0xF], 4) ^ ROTL16(t0S[(state >> 36) & 0xF], 8) ^ ROTL16(t0S[(state >> 16) & 0xF], 12);
+			temp ^= t0S[(state >> 12) & 0xF] ^ ROTL16(t0S[(state >> 56) & 0xF], 4) ^ ROTL16(t0S[(state >> 36) & 0xF], 8) ^ ROTL16(t0S[(state >> 16) & 0xF], 12);
 			//if (threadIndex == 0) {
 			//	printf("roundCount: %d temp: %016llx\n", roundCount, temp);
 			//}
@@ -2217,6 +2221,20 @@ __global__ void smallAesCalculate(u64* roundKeys, u16* t0G, u16* t4G, u32* range
 			//if (threadIndex == 0) {
 			//	printf("roundCount: %d temp: %016llx [KEY]\n", roundCount, state);
 			//}
+
+			// Probability calculation
+			#ifdef PROB_1
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 48) & 0xF], 1);
+				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
+			}
+			#endif
+			#ifdef PROB_2
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
+				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
+			}
+			#endif
 		}
 		// Last round uses s-box directly and XORs to produce output.
 		
@@ -2521,6 +2539,20 @@ int main() {
 	for (int i = 0; i < RCON_SIZE; i++) {
 		rconSml[i] = RCON_SML[i];
 	}
+
+	u32* prob;
+	#if defined(PROB_1)
+	gpuErrorCheck(cudaMallocManaged(&prob, PROB_SIZE_1 * sizeof(u32)));
+	for (int i = 0; i < PROB_SIZE_1; i++) {
+		prob[i] = 0;
+	}
+	#endif
+	#if defined(PROB_2)
+	gpuErrorCheck(cudaMallocManaged(&prob, PROB_SIZE_2 * sizeof(u32)));
+	for (int i = 0; i < PROB_SIZE_2; i++) {
+		prob[i] = 0;
+	}
+	#endif
 	#endif 
 
 	#if defined(SML_AES_ES_SILENT)
@@ -2660,7 +2692,7 @@ int main() {
 
 	#if defined(SML_AES_64)
 	keyExpansion(*rk64, roundKeys64);
-	smallAesCalculate<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t4Sml, range);
+	smallAesCalculate<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t4Sml, range, prob);
 	#endif
 
 	#if defined(SML_AES_ES_SILENT)
@@ -2748,16 +2780,38 @@ int main() {
 	#endif
 
 	#if defined(SML_AES_64)
+	printf("------------------------------------\n");
 	u64 totEncryption;
 	cudaMemcpyFromSymbol(&totEncryption, totalEncryptions, sizeof(u64));
-	printf("Total encryptions                  : %016llx\n", totEncryption);
+	printf("Total encryptions : %016llx\n", totEncryption);
 
 	u64 ctResult;
 	cudaMemcpyFromSymbol(&ctResult, ciphertextResult, sizeof(u64));
-	printf("Ciphertext result                  : %016llx\n", ctResult);
+	printf("Ciphertext result : %016llx\n", ctResult);
+
+	#if defined(PROB_1)
+	u64 totalProb = 0;
+	printf("Probability:\n");
+	for (int i = 0; i < PROB_SIZE_1; i++) {
+		printf("%x : %d\n", i, prob[i]);
+		totalProb += prob[i];
+	}
+	printf("Total prob count: %016llx\n", totalProb);
+	#endif
+	#if defined(PROB_2)
+	u64 totalProb = 0;
+	printf("Probability:\n");
+	for (int i = 0; i < PROB_SIZE_2; i++) {
+		printf("%x : %d\n", i, prob[i]);
+		totalProb += prob[i];
+	}
+	printf("Total prob count: %016llx\n", totalProb);
+	#endif
+	printf("------------------------------------\n");
 
 	cudaFree(rk64);
 	cudaFree(roundKeys64);
+	cudaFree(prob);
 	#endif
 
 	#if defined(SML_AES_ES_SILENT)

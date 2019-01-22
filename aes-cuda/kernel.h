@@ -659,6 +659,13 @@ u32 RCON32[RCON_SIZE] = {
 };
 
 // Small AES
+#define PROB_SIZE_1 16
+#define PROB_SIZE_2 256
+#define PROB_SIZE_3 4096
+#define PROB_SIZE_4 65536
+#define ROUND_5		4
+#define ROUND_6		5
+
 u16 T0_SML[16] = { 
 	0xc66a, 0x6bbd, 0xa55f, 0x844c, 
 	0x4226, 0xcef2, 0xe779, 0x4abe, 
