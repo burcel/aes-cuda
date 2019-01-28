@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CudaCompile Include="kernel.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="kernel.h" />
+    <ClInclude Include="128-es.cuh" />
+    <ClInclude Include="small.cuh" />
+    <ClInclude Include="128-ctr.cuh" />
+    <ClInclude Include="192-es.cuh" />
+    <ClInclude Include="192-ctr.cuh" />
+    <ClInclude Include="256-es.cuh" />
+    <ClInclude Include="256-ctr.cuh" />
+  </ItemGroup>
+</Project>

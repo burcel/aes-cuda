@@ -98,7 +98,14 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="128-ctr.cuh" />
+    <ClInclude Include="128-es.cuh" />
+    <ClInclude Include="192-ctr.cuh" />
+    <ClInclude Include="192-es.cuh" />
+    <ClInclude Include="256-ctr.cuh" />
+    <ClInclude Include="256-es.cuh" />
     <ClInclude Include="kernel.h" />
+    <ClInclude Include="small.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

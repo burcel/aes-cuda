@@ -5,7 +5,7 @@ typedef unsigned long long	    u64;
 
 #define BLOCKS				1024
 #define THREADS				1024
-#define TWO_POWER_RANGE		32
+#define TWO_POWER_RANGE		25
 
 #define SHARED_MEM_BANK_SIZE			32
 #define S_BOX_BANK_SIZE					8
@@ -48,6 +48,27 @@ void printLastCUDAError(){
 		printf("ERROR: cudaGetLastError() returned %d: %s\n", cudaError, cudaGetErrorString(cudaError));
 		printf("-----\n");
 	}
+}
+
+__host__ u32* calculateRange() {
+	u32* range;
+	gpuErrorCheck(cudaMallocManaged(&range, 1 * sizeof(u32)));
+	int threadCount = BLOCKS * THREADS;
+	double keyRange = pow(2, TWO_POWER_RANGE);
+	double threadRange = keyRange / threadCount;
+	*range = ceil(threadRange);
+
+	printf("Blocks                        : %d\n", BLOCKS);
+	printf("Threads                       : %d\n", THREADS);
+	printf("Total Thread count            : %d\n", threadCount);
+	printf("Key Range (power)             : %d\n", TWO_POWER_RANGE);
+	printf("Key Range (decimal)           : %.0f\n", keyRange);
+	printf("Each Thread Key Range         : %.2f\n", threadRange);
+	printf("Each Thread Key Range (kernel): %d\n", range[0]);
+	printf("Total encryptions             : %.0f\n", ceil(threadRange) * threadCount);
+	printf("-------------------------------\n");
+	
+	return range;
 }
 
 __device__ u32 arithmeticRightShift(u32 x, u32 n) { return (x >> n) | (x << (-n & 31)); }
