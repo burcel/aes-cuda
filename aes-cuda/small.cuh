@@ -17,7 +17,7 @@
 // Custom header 
 //#include "kernel.h"
 
-#define PROB_1
+//#define PROB_1
 //#define PROB_2
 //#define PROB_3
 //#define PROB_4
@@ -26,27 +26,27 @@ __device__ u64 ciphertextResultG = 0;
 __device__ u64 totalEncryptionsG = 0;
 
 __host__ void keyExpansion(u64 key, u64 *roundKeys64) {
-	u64 o[4], temp;
+	u64 rk0, rk1, rk2, rk3, temp;
 	roundKeys64[0] = key;
 	printf("key[%02d]                       : %016llx\n", 0, key);
-	for (int i = 0; i < ROUND_COUNT; i++) {
-		o[0] = (key >> 48) & 0xffff;
-		o[1] = (key >> 32) & 0xffff;
-		o[2] = (key >> 16) & 0xffff;
-		o[3] = (key >> 0) & 0xffff;
-		temp = o[3];
-		temp = ROTL16(temp, 4);
-		temp = (T4_SML[(temp >> 0) & 0xf] & 0x000f) ^
-			(T4_SML[(temp >> 4) & 0xf] & 0x00f0) ^
-			(T4_SML[(temp >> 8) & 0xf] & 0x0f00) ^
-			((T4_SML[(temp >> 12) & 0xf] ^ RCON_SML[i]) & 0xf000);
-		o[0] ^= temp;
-		o[1] ^= o[0];
-		o[2] ^= o[1];
-		o[3] ^= o[2];
-		key = (o[0] << 48) ^ (o[1] << 32) ^ (o[2] << 16) ^ (o[3] << 0);
-		roundKeys64[i + 1] = key;
-		printf("key[%02d]                       : %016llx\n", i + 1, key);
+	rk0 = (key >> 48) & 0xFFFF;
+	rk1 = (key >> 32) & 0xFFFF;
+	rk2 = (key >> 16) & 0xFFFF;
+	rk3 = (key >>  0) & 0xFFFF;
+	for (u8 roundCount = 0; roundCount < ROUND_COUNT; roundCount++) {
+		temp = rk3;
+		rk0 = rk0 ^
+			(T4_SML[(temp >>  8) & 0xF] & 0xF000) ^
+			(T4_SML[(temp >>  4) & 0xF] & 0x0F00) ^
+			(T4_SML[(temp >>  0) & 0xF] & 0x00F0) ^
+			(T4_SML[(temp >> 12) & 0xF] & 0x000F) ^
+			RCON_SML[roundCount];
+		rk1 = rk1 ^ rk0;
+		rk2 = rk2 ^ rk1;
+		rk3 = rk2 ^ rk3;
+		key = (rk0 << 48) ^ (rk1 << 32) ^ (rk2 << 16) ^ rk3;
+		printf("key[%02d]                       : %016llx\n", roundCount + 1, key);
+		roundKeys64[roundCount + 1] = key;
 	}
 	printf("-------------------------------\n");
 }
@@ -115,13 +115,11 @@ __global__ void smallAesOneTable(u64* roundKeys, u16* t0G, u16* t4G, u32* range,
 			#ifdef PROB_1
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 48) & 0xF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 			#ifdef PROB_2
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 		}
@@ -210,13 +208,11 @@ __global__ void smallAesOneTableExtendedSharedMemory(u64* roundKeys, u16* t0G, u
 			#ifdef PROB_1
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 48) & 0xF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 			#ifdef PROB_2
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 		}
@@ -231,6 +227,80 @@ __global__ void smallAesOneTableExtendedSharedMemory(u64* roundKeys, u16* t0G, u
 		temp = temp << 16;
 		temp ^= (t4S[(state >> 12) & 0xf][warpThreadIndex] & 0xF000) ^ (t4S[(state >> 56) & 0xf][warpThreadIndex] & 0x0F00) ^ (t4S[(state >> 36) & 0xf][warpThreadIndex] & 0x00F0) ^ (t4S[(state >> 16) & 0xF][warpThreadIndex] & 0x000F);
 		state = temp ^ rkS[ROUND_COUNT][warpThreadIndex];
+
+		ptInit += 0x0000000100000001U;
+
+		//atomicAdd(&totalEncryptionsG, 1);
+		//atomicXor(&ciphertextResultG, state);
+	}
+
+	if (state == 0x54366115edc783e1) {
+		printf("*****************\n");
+	}
+}
+__global__ void smallAesOneTableExtendedSharedMemoryOnlyTable(u64* roundKeys, u16* t0G, u16* t4G, u32* range, u32* prob) {
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+	// <SHARED MEMORY>
+	__shared__ u16 t0S[16][SHARED_MEM_BANK_SIZE], t4S[16];
+	__shared__ u64 rkS[11];
+	if (threadIdx.x < 11) {
+		rkS[threadIdx.x] = roundKeys[threadIdx.x];
+	}
+	if (threadIdx.x < 16) {
+		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
+			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
+		}
+		t4S[threadIdx.x] = t4G[threadIdx.x];  // Sbox
+	}
+	// </SHARED MEMORY>
+	__syncthreads();
+
+	u64 ptInit, state, temp;
+	u32 threadRange = *range;
+	u64 threadRangeStart = 0x0000000000000000U + threadIndex * threadRange * 0x0000000100000001U;
+	ptInit = threadRangeStart;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+		state = ptInit;
+
+		// First round just XORs input with key.
+		state = state ^ rkS[0];
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+			// Table based round function
+			temp = 0;
+			temp ^= t0S[(state >> 60) & 0xF][warpThreadIndex] ^ ROTL16(t0S[(state >> 40) & 0xF][warpThreadIndex], 4) ^ ROTL16(t0S[(state >> 20) & 0xF][warpThreadIndex], 8) ^ ROTL16(t0S[(state) & 0xF][warpThreadIndex], 12);
+			temp = temp << 16;
+			temp ^= t0S[(state >> 44) & 0xF][warpThreadIndex] ^ ROTL16(t0S[(state >> 24) & 0xF][warpThreadIndex], 4) ^ ROTL16(t0S[(state >> 4) & 0xF][warpThreadIndex], 8) ^ ROTL16(t0S[(state >> 48) & 0xF][warpThreadIndex], 12);
+			temp = temp << 16;
+			temp ^= t0S[(state >> 28) & 0xF][warpThreadIndex] ^ ROTL16(t0S[(state >> 8) & 0xF][warpThreadIndex], 4) ^ ROTL16(t0S[(state >> 52) & 0xF][warpThreadIndex], 8) ^ ROTL16(t0S[(state >> 32) & 0xF][warpThreadIndex], 12);
+			temp = temp << 16;
+			temp ^= t0S[(state >> 12) & 0xF][warpThreadIndex] ^ ROTL16(t0S[(state >> 56) & 0xF][warpThreadIndex], 4) ^ ROTL16(t0S[(state >> 36) & 0xF][warpThreadIndex], 8) ^ ROTL16(t0S[(state >> 16) & 0xF][warpThreadIndex], 12);
+			state = temp ^ rkS[roundCount + 1];
+
+			// Probability calculation
+			#ifdef PROB_1
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 48) & 0xF], 1);
+			}
+			#endif
+			#ifdef PROB_2
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
+			}
+			#endif
+		}
+		// Last round uses s-box directly and XORs to produce output.
+
+		temp = 0;
+		temp ^= (t4S[(state >> 60) & 0xf] & 0xF000) ^ (t4S[(state >> 40) & 0xf] & 0x0F00) ^ (t4S[(state >> 20) & 0xf] & 0x00F0) ^ (t4S[(state) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 44) & 0xf] & 0xF000) ^ (t4S[(state >> 24) & 0xf] & 0x0F00) ^ (t4S[(state >> 4) & 0xf] & 0x00F0) ^ (t4S[(state >> 48) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 28) & 0xf] & 0xF000) ^ (t4S[(state >> 8) & 0xf] & 0x0F00) ^ (t4S[(state >> 52) & 0xf] & 0x00F0) ^ (t4S[(state >> 32) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 12) & 0xf] & 0xF000) ^ (t4S[(state >> 56) & 0xf] & 0x0F00) ^ (t4S[(state >> 36) & 0xf] & 0x00F0) ^ (t4S[(state >> 16) & 0xF] & 0x000F);
+		state = temp ^ rkS[ROUND_COUNT];
 
 		ptInit += 0x0000000100000001U;
 
@@ -286,13 +356,11 @@ __global__ void smallAesFourTable(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, 
 			#ifdef PROB_1
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 48) & 0xF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 			#ifdef PROB_2
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 		}
@@ -307,6 +375,10 @@ __global__ void smallAesFourTable(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, 
 		temp = temp << 16;
 		temp ^= (t4S[(state >> 12) & 0xf] & 0xF000) ^ (t4S[(state >> 56) & 0xf] & 0x0F00) ^ (t4S[(state >> 36) & 0xf] & 0x00F0) ^ (t4S[(state >> 16) & 0xF] & 0x000F);
 		state = temp ^ rkS[ROUND_COUNT];
+
+		//if ((threadIndex == 1048575 && rangeCount == threadRange - 1) || (threadIndex == 0 && rangeCount == 0)) {
+		//	printf("Thread: %d rangeCount: %d plaintext: %016llx\n", threadIndex, rangeCount, ptInit);
+		//}
 
 		ptInit += 0x0000000100000001U;
 
@@ -367,13 +439,11 @@ __global__ void smallAesFourTableExtendedSharedMemory(u64* roundKeys, u16* t0G, 
 			#ifdef PROB_1
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 48) & 0xF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 			#ifdef PROB_2
 			if (roundCount == ROUND_5) {
 				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
-				//printf("Thread: %d roundCount: %d state: %016llx Byte: %x\n", threadIndex, roundCount, state, probItem);
 			}
 			#endif
 		}
@@ -388,6 +458,84 @@ __global__ void smallAesFourTableExtendedSharedMemory(u64* roundKeys, u16* t0G, 
 		temp = temp << 16;
 		temp ^= (t4S[(state >> 12) & 0xf][warpThreadIndex] & 0xF000) ^ (t4S[(state >> 56) & 0xf][warpThreadIndex] & 0x0F00) ^ (t4S[(state >> 36) & 0xf][warpThreadIndex] & 0x00F0) ^ (t4S[(state >> 16) & 0xF][warpThreadIndex] & 0x000F);
 		state = temp ^ rkS[ROUND_COUNT][warpThreadIndex];
+
+		ptInit += 0x0000000100000001U;
+
+		//atomicAdd(&totalEncryptionsG, 1);
+		//atomicXor(&ciphertextResultG, state);
+	}
+
+	if (state == 0x54366115edc783e1) {
+		printf("*****************\n");
+	}
+}
+
+__global__ void smallAesFourTableExtendedSharedMemoryOnlyTables(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, u16* t3G, u16* t4G, u32* range, u32* prob) {
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpThreadIndex = threadIdx.x & 31;
+	// <SHARED MEMORY>
+	__shared__ u16 t0S[16][SHARED_MEM_BANK_SIZE], t1S[16][SHARED_MEM_BANK_SIZE], t2S[16][SHARED_MEM_BANK_SIZE], t3S[16][SHARED_MEM_BANK_SIZE], t4S[16];
+	__shared__ u64 rkS[11];
+	if (threadIdx.x < 11) {
+		rkS[threadIdx.x] = roundKeys[threadIdx.x];
+	}
+	if (threadIdx.x < 16) {
+		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
+			t0S[threadIdx.x][bankIndex] = t0G[threadIdx.x];
+			t1S[threadIdx.x][bankIndex] = t1G[threadIdx.x];
+			t2S[threadIdx.x][bankIndex] = t2G[threadIdx.x];
+			t3S[threadIdx.x][bankIndex] = t3G[threadIdx.x];
+		}
+		t4S[threadIdx.x] = t4G[threadIdx.x];  // Sbox
+	}
+	// </SHARED MEMORY>
+	__syncthreads();
+
+	u64 ptInit, state, temp;
+	u32 threadRange = *range;
+	u64 threadRangeStart = 0x0000000000000000U + threadIndex * threadRange * 0x0000000100000001U;
+	ptInit = threadRangeStart;
+
+	for (u32 rangeCount = 0; rangeCount < threadRange; rangeCount++) {
+		state = ptInit;
+
+		// First round just XORs input with key.
+		state = state ^ rkS[0];
+		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+			// Table based round function
+			temp = 0;
+			temp ^= t0S[(state >> 60) & 0xF][warpThreadIndex] ^ t1S[(state >> 40) & 0xF][warpThreadIndex] ^ t2S[(state >> 20) & 0xF][warpThreadIndex] ^ t3S[(state) & 0xF][warpThreadIndex];
+			temp = temp << 16;
+			temp ^= t0S[(state >> 44) & 0xF][warpThreadIndex] ^ t1S[(state >> 24) & 0xF][warpThreadIndex] ^ t2S[(state >> 4) & 0xF][warpThreadIndex] ^ t3S[(state >> 48) & 0xF][warpThreadIndex];
+			temp = temp << 16;
+			temp ^= t0S[(state >> 28) & 0xF][warpThreadIndex] ^ t1S[(state >> 8) & 0xF][warpThreadIndex] ^ t2S[(state >> 52) & 0xF][warpThreadIndex] ^ t3S[(state >> 32) & 0xF][warpThreadIndex];
+			temp = temp << 16;
+			temp ^= t0S[(state >> 12) & 0xF][warpThreadIndex] ^ t1S[(state >> 56) & 0xF][warpThreadIndex] ^ t2S[(state >> 36) & 0xF][warpThreadIndex] ^ t3S[(state >> 16) & 0xF][warpThreadIndex];
+			state = temp ^ rkS[roundCount + 1];
+
+			// Probability calculation
+			#ifdef PROB_1
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 48) & 0xF], 1);
+			}
+			#endif
+			#ifdef PROB_2
+			if (roundCount == ROUND_5) {
+				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
+			}
+			#endif
+		}
+		// Last round uses s-box directly and XORs to produce output.
+
+		temp = 0;
+		temp ^= (t4S[(state >> 60) & 0xf] & 0xF000) ^ (t4S[(state >> 40) & 0xf] & 0x0F00) ^ (t4S[(state >> 20) & 0xf] & 0x00F0) ^ (t4S[(state) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 44) & 0xf] & 0xF000) ^ (t4S[(state >> 24) & 0xf] & 0x0F00) ^ (t4S[(state >> 4) & 0xf] & 0x00F0) ^ (t4S[(state >> 48) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 28) & 0xf] & 0xF000) ^ (t4S[(state >> 8) & 0xf] & 0x0F00) ^ (t4S[(state >> 52) & 0xf] & 0x00F0) ^ (t4S[(state >> 32) & 0xF] & 0x000F);
+		temp = temp << 16;
+		temp ^= (t4S[(state >> 12) & 0xf] & 0xF000) ^ (t4S[(state >> 56) & 0xf] & 0x0F00) ^ (t4S[(state >> 36) & 0xf] & 0x00F0) ^ (t4S[(state >> 16) & 0xF] & 0x000F);
+		state = temp ^ rkS[ROUND_COUNT];
 
 		ptInit += 0x0000000100000001U;
 
@@ -462,8 +610,11 @@ __host__ int mainSmall() {
 	// Kernels
 	//smallAesOneTable<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t4Sml, range, prob);
 	//smallAesOneTableExtendedSharedMemory<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t4Sml, range, prob);
-	//smallAesFourTable<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t1Sml, t2Sml, t3Sml, t4Sml, range, prob);
-	smallAesFourTableExtendedSharedMemory<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t1Sml, t2Sml, t3Sml, t4Sml, range, prob);
+	//smallAesOneTableExtendedSharedMemoryOnlyTable<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t4Sml, range, prob);
+	// fastest
+	smallAesFourTable<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t1Sml, t2Sml, t3Sml, t4Sml, range, prob);
+	//smallAesFourTableExtendedSharedMemory<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t1Sml, t2Sml, t3Sml, t4Sml, range, prob);
+	//smallAesFourTableExtendedSharedMemoryOnlyTables<<<BLOCKS, THREADS>>>(roundKeys64, t0Sml, t1Sml, t2Sml, t3Sml, t4Sml, range, prob);
 
 	cudaDeviceSynchronize();
 	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
@@ -475,7 +626,7 @@ __host__ int mainSmall() {
 	printf("Total encryptions : %I64d\n", totEncryption);
 	u64 ctResult;
 	cudaMemcpyFromSymbol(&ctResult, ciphertextResultG, sizeof(u64));
-	printf("Ciphertext result : %I64d\n", ctResult);
+	printf("Ciphertext result : %I64d %016llx\n", ctResult, ctResult);
 	printf("-------------------------------\n");
 
 	#if defined(PROB_1)

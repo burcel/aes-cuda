@@ -12,5 +12,6 @@
     <ClInclude Include="192-ctr.cuh" />
     <ClInclude Include="256-es.cuh" />
     <ClInclude Include="256-ctr.cuh" />
+    <ClInclude Include="silent.cuh" />
   </ItemGroup>
 </Project>

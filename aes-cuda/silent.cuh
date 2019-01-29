@@ -1,0 +1,196 @@
+// System includes
+#include <stdio.h>
+#include <assert.h>
+#include <math.h>
+#include <ctime>
+
+#include <Windows.h>
+#include <cuda.h>
+#include <time.h>
+
+// CUDA runtime
+#include <cuda_runtime.h>
+
+// Helper functions and utilities to work with CUDA
+//#include <helper_functions.h>
+//#include <helper_cuda.h>
+
+#include <device_launch_parameters.h>
+#include <device_functions.h>
+
+// Custom header 
+//#include "kernel.h"
+
+typedef unsigned __int64 bit64;
+typedef unsigned long bit32;
+typedef unsigned __int16 bit16;
+typedef unsigned char bit8;
+#define ROTL(x,n) (((x)<<(n))|((x)>>(64-(n))))
+#define ROTL16(x,n) (((x)<<(n))|((x)>>(16-(n))))&0xffff
+
+bit64 S[16] = { 0x6, 0xb, 0x5, 0x4, 0x2, 0xe, 0x7, 0xa, 0x9, 0xd, 0xf, 0xc, 0x3, 0x1, 0x0, 0x8 };
+bit16 table0[16] = { 0xc66a, 0x5bbe, 0xa55f, 0x844c, 0x4226, 0xfee1, 0xe779, 0x7aad, 0x1998, 0x9dd4, 0xdff2, 0xbcc7, 0x6335, 0x2113, 0x0000, 0x388b };
+bit16 table1[16] = { 0xac66, 0xe5bb, 0xfa55, 0xc844, 0x6422, 0x1fee, 0x9e77, 0xd7aa, 0x8199, 0x49dd, 0x2dff, 0x7bcc, 0x5633, 0x3211, 0x0000, 0xb388 };
+bit16 table2[16] = { 0x6ac6, 0xbe5b, 0x5fa5, 0x4c84, 0x2642, 0xe1fe, 0x79e7, 0xad7a, 0x9819, 0xd49d, 0xf2df, 0xc7bc, 0x3563, 0x1321, 0x0000, 0x8b38 };
+bit16 table3[16] = { 0x66ac, 0xbbe5, 0x55fa, 0x44c8, 0x2264, 0xee1f, 0x779e, 0xaad7, 0x9981, 0xdd49, 0xff2d, 0xcc7b, 0x3356, 0x1132, 0x0000, 0x88b3 };
+bit16 table01[256] = { 0x6a0c, 0x23d1, 0x3c3f, 0x0e2e, 0xa248, 0xd984, 0x581d, 0x11c0, 0x47f3, 0x8fb7, 0xeb95, 0xbda6, 0x9059, 0xf47b, 0xc66a, 0x75e2, 0xf7d8, 0xbe05, 0xa1eb, 0x93fa, 0x3f9c, 0x4450, 0xc5c9, 0x8c14, 0xda27, 0x1263, 0x7641, 0x2072, 0x0d8d, 0x69af, 0x5bbe, 0xe836, 0x0939, 0x40e4, 0x5f0a, 0x6d1b, 0xc17d, 0xbab1, 0x3b28, 0x72f5, 0x24c6, 0xec82, 0x88a0, 0xde93, 0xf36c, 0x974e, 0xa55f, 0x16d7, 0x282a, 0x61f7, 0x7e19, 0x4c08, 0xe06e, 0x9ba2, 0x1a3b, 0x53e6, 0x05d5, 0xcd91, 0xa9b3, 0xff80, 0xd27f, 0xb65d, 0x844c, 0x37c4, 0xee40, 0xa79d, 0xb873, 0x8a62, 0x2604, 0x5dc8, 0xdc51, 0x958c, 0xc3bf, 0x0bfb, 0x6fd9, 0x39ea, 0x1415, 0x7037, 0x4226, 0xf1ae, 0x5287, 0x1b5a, 0x04b4, 0x36a5, 0x9ac3, 0xe10f, 0x6096, 0x294b, 0x7f78, 0xb73c, 0xd31e, 0x852d, 0xa8d2, 0xccf0, 0xfee1, 0x4d69, 0x4b1f, 0x02c2, 0x1d2c, 0x2f3d, 0x835b, 0xf897, 0x790e, 0x30d3, 0x66e0, 0xaea4, 0xca86, 0x9cb5, 0xb14a, 0xd568, 0xe779, 0x54f1, 0xd6cb, 0x9f16, 0x80f8, 0xb2e9, 0x1e8f, 0x6543, 0xe4da, 0xad07, 0xfb34, 0x3370, 0x5752, 0x0161, 0x2c9e, 0x48bc, 0x7aad, 0xc925, 0xb5fe, 0xfc23, 0xe3cd, 0xd1dc, 0x7dba, 0x0676, 0x87ef, 0xce32, 0x9801, 0x5045, 0x3467, 0x6254, 0x4fab, 0x2b89, 0x1998, 0xaa10, 0x31b2, 0x786f, 0x6781, 0x5590, 0xf9f6, 0x823a, 0x03a3, 0x4a7e, 0x1c4d, 0xd409, 0xb02b, 0xe618, 0xcbe7, 0xafc5, 0x9dd4, 0x2e5c, 0x7394, 0x3a49, 0x25a7, 0x17b6, 0xbbd0, 0xc01c, 0x4185, 0x0858, 0x5e6b, 0x962f, 0xf20d, 0xa43e, 0x89c1, 0xede3, 0xdff2, 0x6c7a, 0x10a1, 0x597c, 0x4692, 0x7483, 0xd8e5, 0xa329, 0x22b0, 0x6b6d, 0x3d5e, 0xf51a, 0x9138, 0xc70b, 0xeaf4, 0x8ed6, 0xbcc7, 0x0f4f, 0xcf53, 0x868e, 0x9960, 0xab71, 0x0717, 0x7cdb, 0xfd42, 0xb49f, 0xe2ac, 0x2ae8, 0x4eca, 0x18f9, 0x3506, 0x5124, 0x6335, 0xd0bd, 0x8d75, 0xc4a8, 0xdb46, 0xe957, 0x4531, 0x3efd, 0xbf64, 0xf6b9, 0xa08a, 0x68ce, 0x0cec, 0x5adf, 0x7720, 0x1302, 0x2113, 0x929b, 0xac66, 0xe5bb, 0xfa55, 0xc844, 0x6422, 0x1fee, 0x9e77, 0xd7aa, 0x8199, 0x49dd, 0x2dff, 0x7bcc, 0x5633, 0x3211, 0x0000, 0xb388, 0x94ed, 0xdd30, 0xc2de, 0xf0cf, 0x5ca9, 0x2765, 0xa6fc, 0xef21, 0xb912, 0x7156, 0x1574, 0x4347, 0x6eb8, 0x0a9a, 0x388b, 0x8b03 };
+bit16 table23[256] = { 0x0c6a, 0xd123, 0x3f3c, 0x2e0e, 0x48a2, 0x84d9, 0x1d58, 0xc011, 0xf347, 0xb78f, 0x95eb, 0xa6bd, 0x5990, 0x7bf4, 0x6ac6, 0xe275, 0xd8f7, 0x05be, 0xeba1, 0xfa93, 0x9c3f, 0x5044, 0xc9c5, 0x148c, 0x27da, 0x6312, 0x4176, 0x7220, 0x8d0d, 0xaf69, 0xbe5b, 0x36e8, 0x3909, 0xe440, 0x0a5f, 0x1b6d, 0x7dc1, 0xb1ba, 0x283b, 0xf572, 0xc624, 0x82ec, 0xa088, 0x93de, 0x6cf3, 0x4e97, 0x5fa5, 0xd716, 0x2a28, 0xf761, 0x197e, 0x084c, 0x6ee0, 0xa29b, 0x3b1a, 0xe653, 0xd505, 0x91cd, 0xb3a9, 0x80ff, 0x7fd2, 0x5db6, 0x4c84, 0xc437, 0x40ee, 0x9da7, 0x73b8, 0x628a, 0x0426, 0xc85d, 0x51dc, 0x8c95, 0xbfc3, 0xfb0b, 0xd96f, 0xea39, 0x1514, 0x3770, 0x2642, 0xaef1, 0x8752, 0x5a1b, 0xb404, 0xa536, 0xc39a, 0x0fe1, 0x9660, 0x4b29, 0x787f, 0x3cb7, 0x1ed3, 0x2d85, 0xd2a8, 0xf0cc, 0xe1fe, 0x694d, 0x1f4b, 0xc202, 0x2c1d, 0x3d2f, 0x5b83, 0x97f8, 0x0e79, 0xd330, 0xe066, 0xa4ae, 0x86ca, 0xb59c, 0x4ab1, 0x68d5, 0x79e7, 0xf154, 0xcbd6, 0x169f, 0xf880, 0xe9b2, 0x8f1e, 0x4365, 0xdae4, 0x07ad, 0x34fb, 0x7033, 0x5257, 0x6101, 0x9e2c, 0xbc48, 0xad7a, 0x25c9, 0xfeb5, 0x23fc, 0xcde3, 0xdcd1, 0xba7d, 0x7606, 0xef87, 0x32ce, 0x0198, 0x4550, 0x6734, 0x5462, 0xab4f, 0x892b, 0x9819, 0x10aa, 0xb231, 0x6f78, 0x8167, 0x9055, 0xf6f9, 0x3a82, 0xa303, 0x7e4a, 0x4d1c, 0x09d4, 0x2bb0, 0x18e6, 0xe7cb, 0xc5af, 0xd49d, 0x5c2e, 0x9473, 0x493a, 0xa725, 0xb617, 0xd0bb, 0x1cc0, 0x8541, 0x5808, 0x6b5e, 0x2f96, 0x0df2, 0x3ea4, 0xc189, 0xe3ed, 0xf2df, 0x7a6c, 0xa110, 0x7c59, 0x9246, 0x8374, 0xe5d8, 0x29a3, 0xb022, 0x6d6b, 0x5e3d, 0x1af5, 0x3891, 0x0bc7, 0xf4ea, 0xd68e, 0xc7bc, 0x4f0f, 0x53cf, 0x8e86, 0x6099, 0x71ab, 0x1707, 0xdb7c, 0x42fd, 0x9fb4, 0xace2, 0xe82a, 0xca4e, 0xf918, 0x0635, 0x2451, 0x3563, 0xbdd0, 0x758d, 0xa8c4, 0x46db, 0x57e9, 0x3145, 0xfd3e, 0x64bf, 0xb9f6, 0x8aa0, 0xce68, 0xec0c, 0xdf5a, 0x2077, 0x0213, 0x1321, 0x9b92, 0x66ac, 0xbbe5, 0x55fa, 0x44c8, 0x2264, 0xee1f, 0x779e, 0xaad7, 0x9981, 0xdd49, 0xff2d, 0xcc7b, 0x3356, 0x1132, 0x0000, 0x88b3, 0xed94, 0x30dd, 0xdec2, 0xcff0, 0xa95c, 0x6527, 0xfca6, 0x21ef, 0x12b9, 0x5671, 0x7415, 0x4743, 0xb86e, 0x9a0a, 0x8b38, 0x038b };
+bit32 Rcon[16] = { 0x8d, 0x01, 0x02, 0x04, 0x08, 0x13, 0x25, 0x47, 0x89, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a };
+bit64 rkey[20] = { 0 };
+
+__device__ bit64 silentCiphertextResultG = 0;
+__device__ bit64 silentTotalEncryptionsG = 0;
+
+void key_schedule(bit64 key) {
+	bit64 o[4], temp;
+	rkey[0] = key;
+	for (int i = 1; i < 16; i++) {
+		o[0] = (key >> 48) & 0xffff;
+		o[1] = (key >> 32) & 0xffff;
+		o[2] = (key >> 16) & 0xffff;
+		o[3] = (key >> 0) & 0xffff;
+		temp = o[3];
+		temp = ROTL16(temp, 4);
+		temp = (S[(temp >> 0) & 0xf] << 0) ^ (S[(temp >> 4) & 0xf] << 4) ^ (S[(temp >> 8) & 0xf] << 8) ^ ((S[(temp >> 12) & 0xf] ^ (Rcon[i] & 0xf)) << 12);
+		if (temp > 0xffff) printf("ERROR\n");
+		o[0] ^= temp;
+		o[1] ^= o[0];
+		o[2] ^= o[1];
+		o[3] ^= o[2];
+		key = (o[0] << 48) ^ (o[1] << 32) ^ (o[2] << 16) ^ (o[3] << 0);
+		rkey[i] = key;
+	}
+}
+__global__ void SILENT(bit64 S[16], bit64 rkey[20], bit16 table0[16], bit16 table1[16], bit16 table2[16], bit16 table3[16], int round) {
+	bit64 state = 0, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
+	for (int j = 0; j < 32768; j++) {  // 2^16 
+		for (int i = 0; i < round - 1; i++) {
+			state ^= rkey[i];
+			temp0 = table0[state >> 60] ^ table1[(state >> 40) & 0xf] ^ table2[(state >> 20) & 0xf] ^ table3[(state >> 0) & 0xf];
+			temp1 = table0[(state >> 44) & 0xf] ^ table1[(state >> 24) & 0xf] ^ table2[(state >> 4) & 0xf] ^ table3[(state >> 48) & 0xf];
+			temp2 = table0[(state >> 28) & 0xf] ^ table1[(state >> 8) & 0xf] ^ table2[(state >> 52) & 0xf] ^ table3[(state >> 32) & 0xf];
+			temp3 = table0[(state >> 12) & 0xf] ^ table1[(state >> 56) & 0xf] ^ table2[(state >> 36) & 0xf] ^ table3[(state >> 16) & 0xf];
+			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
+		}
+		state ^= rkey[round - 1];
+		state = S[state & 0xf] ^ (S[(state >> 4) & 0xf] << 4) ^ (S[(state >> 8) & 0xf] << 8) ^ (S[(state >> 12) & 0xf] << 12) ^ (S[(state >> 16) & 0xf] << 16) ^ (S[(state >> 20) & 0xf] << 20) ^ (S[(state >> 24) & 0xf] << 24) ^ (S[(state >> 28) & 0xf] << 28) ^ (S[(state >> 32) & 0xf] << 32) ^ (S[(state >> 36) & 0xf] << 36) ^ (S[(state >> 40) & 0xf] << 40) ^ (S[(state >> 44) & 0xf] << 44) ^ (S[(state >> 48) & 0xf] << 48) ^ (S[(state >> 52) & 0xf] << 52) ^ (S[(state >> 56) & 0xf] << 56) ^ (S[(state >> 60) & 0xf] << 60);
+		temp0 = (state & 0xf000f000f000f000);
+		temp1 = (state & 0x0f000f000f000f00);
+		temp2 = (state & 0x00f000f000f000f0);
+		temp3 = (state & 0x000f000f000f000f);
+		temp1 = ROTL(temp1, 16);
+		temp2 = ROTL(temp2, 32);
+		temp3 = ROTL(temp3, 48);
+		state = temp0 ^ temp1 ^ temp2 ^ temp3;
+
+		atomicAdd(&silentTotalEncryptionsG, 1);
+		atomicXor(&silentCiphertextResultG, state);
+	}
+	// DEBUG
+	if (state == 0x41a18e40098ad26a) rkey[0] = state;
+}
+__global__ void SILENT_shared(bit64 S_d[16], bit64 rkey_d[20], bit16 table0_d[16], bit16 table1_d[16], bit16 table2_d[16], bit16 table3_d[16], int round) {
+	int threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	bit64 init = 0, state = 0, temp0 = 0, temp1 = 0, temp2 = 0, temp3 = 0;
+	__shared__ bit32 table0[16], table1[16], table2[16], table3[16];
+	__shared__ bit64 rkey[20];
+	__shared__ bit64 S[16];
+	if (threadIdx.x < 16)	table0[threadIdx.x] = table0_d[threadIdx.x];
+	if (threadIdx.x < 16)	table1[threadIdx.x] = table1_d[threadIdx.x];
+	if (threadIdx.x < 16)	table2[threadIdx.x] = table2_d[threadIdx.x];
+	if (threadIdx.x < 16)	table3[threadIdx.x] = table3_d[threadIdx.x];
+	if (threadIdx.x < 16)	S[threadIdx.x] = S_d[threadIdx.x];
+	if (threadIdx.x < 16)	rkey[threadIdx.x] = rkey_d[threadIdx.x];
+	__syncthreads();
+	init = 0x0000000000000000U + threadIndex * 4096 * 0x0000000100000001U;
+	int i, j;
+	for (j = 0; j < 4096; j++) {
+		state = init;
+		for (i = 0; i < round - 1; i++) {
+			state ^= rkey[i];
+			temp0 = table0[state >> 60] ^ table1[(state >> 40) & 0xf] ^ table2[(state >> 20) & 0xf] ^ table3[(state >> 0) & 0xf];
+			temp1 = table0[(state >> 44) & 0xf] ^ table1[(state >> 24) & 0xf] ^ table2[(state >> 4) & 0xf] ^ table3[(state >> 48) & 0xf];
+			temp2 = table0[(state >> 28) & 0xf] ^ table1[(state >> 8) & 0xf] ^ table2[(state >> 52) & 0xf] ^ table3[(state >> 32) & 0xf];
+			temp3 = table0[(state >> 12) & 0xf] ^ table1[(state >> 56) & 0xf] ^ table2[(state >> 36) & 0xf] ^ table3[(state >> 16) & 0xf];
+			state = (temp0 << 48) ^ (temp1 << 32) ^ (temp2 << 16) ^ (temp3);
+		}
+		state ^= rkey[round - 1];
+		state = S[state & 0xf] ^ (S[(state >> 4) & 0xf] << 4) ^ (S[(state >> 8) & 0xf] << 8) ^ (S[(state >> 12) & 0xf] << 12) ^ (S[(state >> 16) & 0xf] << 16) ^ (S[(state >> 20) & 0xf] << 20) ^ (S[(state >> 24) & 0xf] << 24) ^ (S[(state >> 28) & 0xf] << 28) ^ (S[(state >> 32) & 0xf] << 32) ^ (S[(state >> 36) & 0xf] << 36) ^ (S[(state >> 40) & 0xf] << 40) ^ (S[(state >> 44) & 0xf] << 44) ^ (S[(state >> 48) & 0xf] << 48) ^ (S[(state >> 52) & 0xf] << 52) ^ (S[(state >> 56) & 0xf] << 56) ^ (S[(state >> 60) & 0xf] << 60);
+		temp0 = (state & 0xf000f000f000f000);
+		temp1 = (state & 0x0f000f000f000f00);
+		temp2 = (state & 0x00f000f000f000f0);
+		temp3 = (state & 0x000f000f000f000f);
+		temp1 = ROTL(temp1, 16);
+		temp2 = ROTL(temp2, 32);
+		temp3 = ROTL(temp3, 48);
+		state = temp0 ^ temp1 ^ temp2 ^ temp3;
+
+		atomicAdd(&silentTotalEncryptionsG, 1);
+		atomicXor(&silentCiphertextResultG, state);
+
+		init += 0x0000000100000001U;
+		if (threadIndex == 1048575 && j == 4095) {
+			printf("plaintext: %016llx\n", init);
+		}
+	}
+	// DEBUG
+	if (state == 0x41a18e40098ad26a) rkey_d[0] = state;
+}
+
+__host__ int mainSilent() {
+	bit64 *S_d, *rkey_d;
+	bit16 *table0_d, *table1_d, *table2_d, *table3_d, *table01_d, *table23_d;
+	cudaSetDevice(0);
+	//cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+	cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);		// Has no effect
+	// cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);		// Has no effect
+	//bit64 plaintext = 0;
+	key_schedule(0);
+	//	plaintext = encrypt(plaintext,10);
+	//	printf("%016I64x\n", plaintext);	
+	cudaMalloc((void **)&S_d, 16 * sizeof(bit64));
+	cudaMalloc((void **)&rkey_d, 20 * sizeof(bit64));
+	cudaMalloc((void **)&table0_d, 16 * sizeof(bit16));
+	cudaMalloc((void **)&table1_d, 16 * sizeof(bit16));
+	cudaMalloc((void **)&table2_d, 16 * sizeof(bit16));
+	cudaMalloc((void **)&table3_d, 16 * sizeof(bit16));
+	cudaMalloc((void **)&table01_d, 256 * sizeof(bit16));
+	cudaMalloc((void **)&table23_d, 256 * sizeof(bit16));
+	cudaMemcpy(S_d, S, 16 * sizeof(bit64), cudaMemcpyHostToDevice);
+	cudaMemcpy(rkey_d, rkey, 20 * sizeof(bit64), cudaMemcpyHostToDevice);
+	cudaMemcpy(table0_d, table0, 16 * sizeof(bit16), cudaMemcpyHostToDevice);
+	cudaMemcpy(table1_d, table1, 16 * sizeof(bit16), cudaMemcpyHostToDevice);
+	cudaMemcpy(table2_d, table2, 16 * sizeof(bit16), cudaMemcpyHostToDevice);
+	cudaMemcpy(table3_d, table3, 16 * sizeof(bit16), cudaMemcpyHostToDevice);
+	cudaMemcpy(table01_d, table01, 256 * sizeof(bit16), cudaMemcpyHostToDevice);
+	cudaMemcpy(table23_d, table23, 256 * sizeof(bit16), cudaMemcpyHostToDevice);
+
+	clock_t beginTime = clock();
+
+	//SILENT<<<128, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	SILENT_shared<<<1024, 1024>>>(S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	//SILENT_shared_combined << < 64, 1024 >> > (S_d, rkey_d, table01_d, table23_d, 10);
+	//SILENT_shared_multiple << < 64, 1024 >> > (S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	//SILENT_shared_combined_multiple << < 64, 1024 >> > (S_d, rkey_d, table01_d, table23_d, 10);
+	//SILENT_shared_improvements << < 64, 1024 >> > (S_d, rkey_d, table0_d, table1_d, table2_d, table3_d, 10);
+	
+	cudaDeviceSynchronize();
+	printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
+	printf("-------------------------------\n");
+	printLastCUDAError();
+
+	printf("-------------------------------\n");
+	bit64 totEncryption;
+	cudaMemcpyFromSymbol(&totEncryption, silentTotalEncryptionsG, sizeof(bit64));
+	printf("Total encryptions : %I64d\n", totEncryption);
+	bit64 ctResult;
+	cudaMemcpyFromSymbol(&ctResult, silentCiphertextResultG, sizeof(bit64));
+	printf("Ciphertext result : %I64d\n", ctResult);
+	printf("-------------------------------\n");
+
+
+	// Cleanup
+	cudaFree(table0_d); cudaFree(table1_d); cudaFree(table2_d); cudaFree(table3_d); cudaFree(table01_d); cudaFree(table23_d); cudaFree(S_d); cudaFree(rkey_d);
+
+	return 1;
+}
