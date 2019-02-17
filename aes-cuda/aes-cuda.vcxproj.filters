@@ -13,5 +13,6 @@
     <ClInclude Include="256-es.cuh" />
     <ClInclude Include="256-ctr.cuh" />
     <ClInclude Include="silent.cuh" />
+    <ClInclude Include="file-encryption.cuh" />
   </ItemGroup>
 </Project>

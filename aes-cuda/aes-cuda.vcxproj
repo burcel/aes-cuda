@@ -104,6 +104,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <ClInclude Include="192-es.cuh" />
     <ClInclude Include="256-ctr.cuh" />
     <ClInclude Include="256-es.cuh" />
+    <ClInclude Include="file-encryption.cuh" />
     <ClInclude Include="kernel.h" />
     <ClInclude Include="silent.cuh" />
     <ClInclude Include="small.cuh" />

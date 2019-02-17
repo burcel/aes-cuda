@@ -17,7 +17,7 @@
 // Custom header 
 //#include "kernel.h"
 
-//#define PROB_1
+#define PROB_1
 //#define PROB_2
 //#define PROB_3
 //#define PROB_4
@@ -340,7 +340,7 @@ __global__ void smallAesFourTable(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, 
 
 		// First round just XORs input with key.
 		state = state ^ rkS[0];
-		for (u8 roundCount = 0; roundCount < ROUND_COUNT_MIN_1; roundCount++) {
+		for (u8 roundCount = 0; roundCount < ROUND_5; roundCount++) {
 			// Table based round function
 			temp = 0;
 			temp ^= t0S[(state >> 60) & 0xF] ^ t1S[(state >> 40) & 0xF] ^ t2S[(state >> 20) & 0xF] ^ t3S[(state) & 0xF];
@@ -351,18 +351,7 @@ __global__ void smallAesFourTable(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, 
 			temp = temp << 16;
 			temp ^= t0S[(state >> 12) & 0xF] ^ t1S[(state >> 56) & 0xF] ^ t2S[(state >> 36) & 0xF] ^ t3S[(state >> 16) & 0xF];
 			state = temp ^ rkS[roundCount + 1];
-
-			// Probability calculation
-			#ifdef PROB_1
-			if (roundCount == ROUND_5) {
-				atomicAdd(&prob[(state >> 48) & 0xF], 1);
-			}
-			#endif
-			#ifdef PROB_2
-			if (roundCount == ROUND_5) {
-				atomicAdd(&prob[(state >> 56) & 0xFF], 1);
-			}
-			#endif
+			
 		}
 		// Last round uses s-box directly and XORs to produce output.
 
@@ -376,17 +365,26 @@ __global__ void smallAesFourTable(u64* roundKeys, u16* t0G, u16* t1G, u16* t2G, 
 		temp ^= (t4S[(state >> 12) & 0xf] & 0xF000) ^ (t4S[(state >> 56) & 0xf] & 0x0F00) ^ (t4S[(state >> 36) & 0xf] & 0x00F0) ^ (t4S[(state >> 16) & 0xF] & 0x000F);
 		state = temp ^ rkS[ROUND_COUNT];
 
+		// Probability calculation
+		#ifdef PROB_1
+		atomicAdd(&prob[(state >> 48) & 0xF], 1);
+		#endif
+		#ifdef PROB_2
+		atomicAdd(&prob[(state >> 56) & 0xFF], 1);
+		#endif
+
 		//if ((threadIndex == 1048575 && rangeCount == threadRange - 1) || (threadIndex == 0 && rangeCount == 0)) {
-		//	printf("Thread: %d rangeCount: %d plaintext: %016llx\n", threadIndex, rangeCount, ptInit);
+		//	printf("Thread: %d rangeCount: %d plaintext: %016llx ciphertext: %016llx\n", threadIndex, rangeCount, ptInit, state);
 		//}
 
 		ptInit += 0x0000000100000001U;
 
-		//atomicAdd(&totalEncryptionsG, 1);
-		//atomicXor(&ciphertextResultG, state);
+		atomicAdd(&totalEncryptionsG, 1);
+		atomicXor(&ciphertextResultG, state);
+
 	}
 
-	if (state == 0x54366115edc783e1) {
+	if (state == 0xff3041fd1d8669ad) {
 		printf("*****************\n");
 	}
 }

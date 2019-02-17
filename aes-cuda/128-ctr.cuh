@@ -138,6 +138,10 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 		}
 
 		pt3Init++;
+		
+		if (s0 == 0x936CA359 && s1 == 0x32CC2BC0 && s2 == 0x7F5ABFAE && s3 == 0xECFAB28B) {
+			printf("BINGO\n");
+		}
 
 	}
 
@@ -238,10 +242,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 		s2 = t4_3S[t2 >> 24] ^ t4_2S[(t3 >> 16) & 0xff] ^ t4_1S[(t0 >> 8) & 0xff] ^ t4_0S[(t1) & 0xFF] ^ rkS[42];
 		s3 = t4_3S[t3 >> 24] ^ t4_2S[(t0 >> 16) & 0xff] ^ t4_1S[(t1 >> 8) & 0xff] ^ t4_0S[(t2) & 0xFF] ^ rkS[43];
 
-		//if (s0 == 0x00000000U) {
-		//	printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s1, s3);
-		//}
-
 		// Overflow
 		if (pt3Init == MAX_U32) {
 			pt2Init++;
@@ -249,6 +249,10 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 
 		// Create key as 32 bit unsigned integers
 		pt3Init++;
+
+		if (s0 == 0x936CA359 && s1 == 0x32CC2BC0 && s2 == 0x7F5ABFAE && s3 == 0xECFAB28B) {
+			printf("BINGO\n");
+		}
 	}
 
 	if (threadIndex == 1048575) {
@@ -272,7 +276,7 @@ __host__ int main128Ctr() {
 	pt[0] = 0x3243F6A8U;
 	pt[1] = 0x885A308DU;
 	pt[2] = 0x313198A2U;
-	pt[3] = 0xE0370734U;
+	pt[3] = 0x00000000U;
 
 	rk[0] = 0x2B7E1516U;
 	rk[1] = 0x28AED2A6U;

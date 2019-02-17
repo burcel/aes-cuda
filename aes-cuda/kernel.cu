@@ -17,14 +17,15 @@
 // Custom header 
 #include "kernel.h"
 //
-#include "128-es.cuh"
+//#include "128-es.cuh"
 #include "128-ctr.cuh"
-#include "192-es.cuh"
-#include "192-ctr.cuh"
-#include "256-es.cuh"
-#include "256-ctr.cuh"
-#include "small.cuh"
-#include "silent.cuh"
+//#include "192-es.cuh"
+//#include "192-ctr.cuh"
+//#include "256-es.cuh"
+//#include "256-ctr.cuh"
+//#include "small.cuh"
+//#include "silent.cuh"
+#include "file-encryption.cuh"
 
 int main() {
 
@@ -47,10 +48,13 @@ int main() {
 	//main256Ctr();
 
 	// Small AES probability calculation
-	mainSmall();
+	//mainSmall();
 
 	// Silent
 	//mainSilent();
+
+	// File Encryption
+	mainFileEncryption();
 
 	return 0;
 }
