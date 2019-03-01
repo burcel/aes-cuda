@@ -17,7 +17,7 @@
 // Custom header 
 #include "kernel.h"
 //
-//#include "128-es.cuh"
+#include "128-es.cuh"
 #include "128-ctr.cuh"
 //#include "192-es.cuh"
 #include "192-ctr.cuh"

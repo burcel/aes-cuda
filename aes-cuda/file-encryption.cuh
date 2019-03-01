@@ -36,7 +36,7 @@ __global__ void fileEncryption128counterWithOneTableExtendedSharedMemoryBytePerm
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
-	__shared__ u32 rkS[TABLE_BASED_KEY_LIST_ROW_SIZE];
+	__shared__ u32 rkS[AES_128_KEY_SIZE_INT];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
@@ -47,7 +47,7 @@ __global__ void fileEncryption128counterWithOneTableExtendedSharedMemoryBytePerm
 			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
 		}
 
-		if (threadIdx.x < TABLE_BASED_KEY_LIST_ROW_SIZE) {
+		if (threadIdx.x < AES_128_KEY_SIZE_INT) {
 			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 
@@ -184,7 +184,7 @@ __global__ void fileEncryption192counterWithOneTableExtendedSharedMemoryBytePerm
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
-	__shared__ u32 rkS[TABLE_BASED_KEY_LIST_SIZE_192];
+	__shared__ u32 rkS[AES_192_KEY_SIZE_INT];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
@@ -195,7 +195,7 @@ __global__ void fileEncryption192counterWithOneTableExtendedSharedMemoryBytePerm
 			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
 		}
 
-		if (threadIdx.x < TABLE_BASED_KEY_LIST_SIZE_192) {
+		if (threadIdx.x < AES_192_KEY_SIZE_INT) {
 			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 
@@ -315,7 +315,7 @@ __global__ void fileEncryption256counterWithOneTableExtendedSharedMemoryBytePerm
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
-	__shared__ u32 rkS[TABLE_BASED_KEY_LIST_SIZE_256];
+	__shared__ u32 rkS[AES_256_KEY_SIZE_INT];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
@@ -326,7 +326,7 @@ __global__ void fileEncryption256counterWithOneTableExtendedSharedMemoryBytePerm
 			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
 		}
 
-		if (threadIdx.x < TABLE_BASED_KEY_LIST_SIZE_256) {
+		if (threadIdx.x < AES_256_KEY_SIZE_INT) {
 			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 
@@ -438,6 +438,7 @@ __host__ int mainFileEncryption() {
 
 	int chunkSize = 1024;
 	const std::string filePath = "C://file-encryption-test//william3.mp4";
+	int keyLen = AES_128_KEY_LEN_INT;
 
 	std::fstream fileIn(filePath, std::fstream::in | std::fstream::binary);
 	if (fileIn) {
@@ -451,24 +452,18 @@ __host__ int mainFileEncryption() {
 		printf("-------------------------------\n");
 
 		// Allocate plaintext and every round key
-		u32 *pt, *rk, *roundKeys, *rk192, *roundKeys192, *rk256, *roundKeys256;
+		u32 *pt, *rk, rk128[AES_128_KEY_LEN_INT], rk192[AES_192_KEY_LEN_INT], rk256[AES_256_KEY_LEN_INT]; 
 		gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&rk, 4 * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&roundKeys, TABLE_BASED_KEY_LIST_ROW_SIZE * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&rk192, 6 * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&roundKeys192, TABLE_BASED_KEY_LIST_SIZE_192 * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&rk256, 8 * sizeof(u32)));
-		gpuErrorCheck(cudaMallocManaged(&roundKeys256, TABLE_BASED_KEY_LIST_SIZE_256 * sizeof(u32)));
 
 		pt[0] = 0x3243F6A8U;
 		pt[1] = 0x885A308DU;
 		pt[2] = 0x313198A2U;
 		pt[3] = 0x00000000U;
 
-		rk[0] = 0x2B7E1516U;
-		rk[1] = 0x28AED2A6U;
-		rk[2] = 0xABF71588U;
-		rk[3] = 0x09CF4F3CU;
+		rk128[0] = 0x2B7E1516U;
+		rk128[1] = 0x28AED2A6U;
+		rk128[2] = 0xABF71588U;
+		rk128[3] = 0x09CF4F3CU;
 
 		rk192[0] = 0x8e73b0f7U;
 		rk192[1] = 0xda0e6452U;
@@ -534,21 +529,42 @@ __host__ int mainFileEncryption() {
 		printf("Each thread encryptions       : %.2f\n", encryptionCount[0] / (double)threadCount[0]);
 		printf("-------------------------------\n");
 		printf("Initial Counter               : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
-		printf("Initial Key                   : %08x %08x %08x %08x\n", rk[0], rk[1], rk[2], rk[3]);
-		//printf("Initial Key                    : %08x %08x %08x %08x %08x %08x\n", rk192[0], rk192[1], rk192[2], rk192[3], rk192[4], rk192[5]);
-		//printf("Initial Key                    : %08x %08x %08x %08x %08x %08x %08x %08x\n", rk256[0], rk256[1], rk256[2], rk256[3], rk256[4], rk256[5], rk256[6], rk256[7]);
+		int keySize;
+		if (keyLen == AES_128_KEY_LEN_INT) {
+			rk = rk128;
+			keySize = AES_128_KEY_SIZE_INT;
+			printf("Initial Key (%d byte)         : %08x %08x %08x %08x\n", AES_128_KEY_LEN_INT * U32_SIZE, rk[0], rk[1], rk[2], rk[3]);
+		} else if (keyLen == AES_192_KEY_LEN_INT) {
+			rk = rk192;
+			keySize = AES_192_KEY_SIZE_INT;
+			printf("Initial Key (%d byte)         : %08x %08x %08x %08x %08x %08x\n", AES_192_KEY_LEN_INT * U32_SIZE, rk[0], rk[1], rk[2], rk[3], rk[4], rk[5]);
+		} else if (keyLen == AES_256_KEY_LEN_INT) {
+			rk = rk256;
+			keySize = AES_256_KEY_SIZE_INT;
+			printf("Initial Key (%d byte)         : %08x %08x %08x %08x %08x %08x %08x %08x\n", AES_256_KEY_LEN_INT * U32_SIZE, rk[0], rk[1], rk[2], rk[3], rk[4], rk[5], rk[6], rk[7]);
+		}
 		printf("-------------------------------\n");
 
-		// Key expansion
-		keyExpansion(rk, roundKeys);
-		keyExpansion192(rk192, roundKeys192);
-		keyExpansion256(rk256, roundKeys256);
-
+		// Prepare round keys
+		u32 *roundKeys;
+		gpuErrorCheck(cudaMallocManaged(&roundKeys, keySize * sizeof(u32)));
+		if (keyLen == AES_128_KEY_LEN_INT) {
+			keyExpansion(rk128, roundKeys);
+		} else if (keyLen == AES_192_KEY_LEN_INT) {
+			keyExpansion192(rk192, roundKeys);
+		} else if (keyLen == AES_256_KEY_LEN_INT) {
+			keyExpansion256(rk256, roundKeys);
+		}
+		
 		clock_t beginTime = clock();
 		// Kernels
-		fileEncryption128counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
-		//fileEncryption192counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
-		//fileEncryption256counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
+		if (keyLen == AES_128_KEY_LEN_INT) {
+			fileEncryption128counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
+		} else if (keyLen == AES_192_KEY_LEN_INT) {
+			fileEncryption192counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
+		} else if (keyLen == AES_256_KEY_LEN_INT) {
+			fileEncryption256counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBox<<<BLOCKS, THREADS>>>(pt, ct, roundKeys, t0, t4, encryptionCount, threadCount);
+		}
 		
 		cudaDeviceSynchronize();
 		printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
@@ -566,6 +582,7 @@ __host__ int mainFileEncryption() {
 		printf("Encrypted File: %s\n", outFilePath.c_str());
 		printf("-------------------------------\n");
 		std::fstream fileOut(outFilePath, std::fstream::out | std::fstream::binary);
+		u32 cipherTextIndex = 0;
 		// Allocate file buffer
 		char * buffer = new char[chunkSize];
 		while (1) {
@@ -593,7 +610,7 @@ __host__ int mainFileEncryption() {
 					readInt |= (0x000000FF & buffer[bufferIndex - 1]) << 8;
 					readInt |= (0x000000FF & buffer[bufferIndex    ]);
 					// XOR with ciphertext
-					readInt ^= ct[bufferIndex / U32_SIZE];
+					readInt ^= ct[cipherTextIndex++];
 					// Change 4 byte back to char
 					buffer[bufferIndex - 3] = readInt >> 24;
 					buffer[bufferIndex - 2] = readInt >> 16;
@@ -606,7 +623,7 @@ __host__ int mainFileEncryption() {
 						readInt |= (0x000000FF & buffer[bufferIndex - bufferIntIndex + extraByteIndex + 1]) << ((U32_SIZE -1 -extraByteIndex) * 8);
 					}
 					// XOR with ciphertext
-					readInt ^= ct[bufferIndex / U32_SIZE];
+					readInt ^= ct[cipherTextIndex++];
 					// Change bufferIntIndex byte back to char
 					for (int extraByteIndex = 0; extraByteIndex < bufferIntIndex; extraByteIndex++) {
 						buffer[bufferIndex - bufferIntIndex + extraByteIndex + 1] = readInt >> (U32_SIZE - 1 - extraByteIndex) * 8;
@@ -633,10 +650,6 @@ __host__ int mainFileEncryption() {
 		cudaFree(pt);
 		cudaFree(rk);
 		cudaFree(roundKeys);
-		cudaFree(rk192);
-		cudaFree(roundKeys192);
-		cudaFree(rk256);
-		cudaFree(roundKeys256);
 		cudaFree(t0);
 		cudaFree(t1);
 		cudaFree(t2);

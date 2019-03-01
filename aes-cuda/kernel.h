@@ -9,22 +9,28 @@ typedef unsigned long long	    u64;
 
 #define SHARED_MEM_BANK_SIZE			32
 #define S_BOX_BANK_SIZE					8
-#define TABLE_BASED_KEY_LIST_ROW_SIZE	44
-#define TABLE_BASED_KEY_LIST_SIZE_192	52
-#define TABLE_BASED_KEY_LIST_SIZE_256	60
 #define TABLE_SIZE						256
 #define RCON_SIZE						10
 #define U32_SIZE						4
+#define MAX_U32							4294967295
+#define MAX_U16							0x0000FFFF
+#define BYTE_COUNT						16  // 128 / 8
+#define PARTLY_DIVIDE_THRESHOLD			110
+
+#define AES_128_KEY_LEN_INT 4
+#define AES_192_KEY_LEN_INT 6
+#define AES_256_KEY_LEN_INT 8
+
+#define AES_128_KEY_SIZE_INT	44
+#define AES_192_KEY_SIZE_INT	52
+#define AES_256_KEY_SIZE_INT	60
+
 #define ROUND_COUNT						10
 #define ROUND_COUNT_MIN_1				9
 #define ROUND_COUNT_192					12
 #define ROUND_COUNT_MIN_1_192			11
 #define ROUND_COUNT_256					14
 #define ROUND_COUNT_MIN_1_256			13
-#define BYTE_COUNT						16  // 128 / 8
-#define MAX_U32							4294967295
-#define MAX_U16							0x0000FFFF
-#define PARTLY_DIVIDE_THRESHOLD			110
 
 // __byte_perm Constants
 // u32 t = __byte_perm(x, y, selector);

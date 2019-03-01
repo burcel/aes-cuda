@@ -77,7 +77,7 @@ __global__ void counter192WithOneTableExtendedSharedMemoryBytePermPartlyExtended
 	// <SHARED MEMORY>
 	__shared__ u32 t0S[TABLE_SIZE][SHARED_MEM_BANK_SIZE];
 	__shared__ u32 t4S[TABLE_SIZE][S_BOX_BANK_SIZE];
-	__shared__ u32 rkS[TABLE_BASED_KEY_LIST_SIZE_192];
+	__shared__ u32 rkS[AES_192_KEY_SIZE_INT];
 
 	if (threadIdx.x < TABLE_SIZE) {
 		for (u8 bankIndex = 0; bankIndex < SHARED_MEM_BANK_SIZE; bankIndex++) {
@@ -88,7 +88,7 @@ __global__ void counter192WithOneTableExtendedSharedMemoryBytePermPartlyExtended
 			t4S[threadIdx.x][bankIndex] = t4G[threadIdx.x];
 		}
 
-		if (threadIdx.x < TABLE_BASED_KEY_LIST_SIZE_192) {
+		if (threadIdx.x < AES_192_KEY_SIZE_INT) {
 			rkS[threadIdx.x] = rk[threadIdx.x];
 		}
 
@@ -182,7 +182,7 @@ __host__ int main192Ctr() {
 	gpuErrorCheck(cudaMallocManaged(&pt, 4 * sizeof(u32)));
 	gpuErrorCheck(cudaMallocManaged(&ct, 4 * sizeof(u32)));
 	gpuErrorCheck(cudaMallocManaged(&rk192, 6 * sizeof(u32)));
-	gpuErrorCheck(cudaMallocManaged(&roundKeys192, TABLE_BASED_KEY_LIST_SIZE_192 * sizeof(u32)));
+	gpuErrorCheck(cudaMallocManaged(&roundKeys192, AES_192_KEY_SIZE_INT * sizeof(u32)));
 
 	pt[0] = 0x6bc1bee2U;
 	pt[1] = 0x2e409f96U;
