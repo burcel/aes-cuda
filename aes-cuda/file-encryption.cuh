@@ -82,7 +82,7 @@ __global__ void fileEncryption128counterWithOneTableExtendedSharedMemoryBytePerm
 	}
 
 	// Initialize ciphertext index
-	u32 ctIndex = threadIndex*4;
+	u64 ctIndex = threadIndex*4;
 
 	//if (threadIndex == 0) {
 	//	printf("Boundry: %08x %08x\n", pt2Max, pt3Max);
@@ -152,7 +152,7 @@ __global__ void fileEncryption128counterWithOneTableExtendedSharedMemoryBytePerm
 		// Ciphertext index
 		ctIndex += threadCount * 4;
 
-		atomicAdd(&fileEncryptionTotalG, 1);
+		//atomicAdd(&fileEncryptionTotalG, 1);
 
 		if (pt2Init >= pt2Max && pt3Init >= pt3Max) {
 			break;
@@ -160,13 +160,13 @@ __global__ void fileEncryption128counterWithOneTableExtendedSharedMemoryBytePerm
 
 	}
 
-	if (threadIndex == 0) {
-		//printf("threadIndex : %d\n", threadIndex);
-		//printf("Plaintext   : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
-		//printf("Ciphertext  : %08x %08x %08x %08x\n", s0, s1, s2, s3);
-		//printf("Ciphertext index  : %d %d %d %d\n", ctIndex, ctIndex+1, ctIndex+2, ctIndex+3);
-		printf("-------------------------------\n");
-	}
+	//if (threadIndex == 0) {
+	//	printf("threadIndex : %d\n", threadIndex);
+	//	printf("Plaintext   : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
+	//	printf("Ciphertext  : %08x %08x %08x %08x\n", s0, s1, s2, s3);
+	//	printf("Ciphertext index  : %d %d %d %d\n", ctIndex, ctIndex+1, ctIndex+2, ctIndex+3);
+	//	printf("-------------------------------\n");
+	//}
 
 }
 
@@ -231,7 +231,7 @@ __global__ void fileEncryption192counterWithOneTableExtendedSharedMemoryBytePerm
 	}
 
 	// Initialize ciphertext index
-	u32 ctIndex = threadIndex * 4;
+	u64 ctIndex = threadIndex * 4;
 
 	for (;;) {
 
@@ -286,18 +286,20 @@ __global__ void fileEncryption192counterWithOneTableExtendedSharedMemoryBytePerm
 		// Ciphertext index
 		ctIndex += threadCount * 4;
 
-		atomicAdd(&fileEncryptionTotalG, 1);
+		//atomicAdd(&fileEncryptionTotalG, 1);
 
 		if (pt2Init >= pt2Max && pt3Init >= pt3Max) {
 			break;
 		}
 	}
 
-	if (threadIndex == 0) {
-		//printf("Plaintext : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
-		//printf("Ciphertext : %08x %08x %08x %08x\n", s0, s1, s2, s3);
-		printf("-------------------------------\n");
-	}
+	//if (threadIndex == 0) {
+	//	printf("threadIndex : %d\n", threadIndex);
+	//	printf("Plaintext   : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
+	//	printf("Ciphertext  : %08x %08x %08x %08x\n", s0, s1, s2, s3);
+	//	printf("Ciphertext index  : %d %d %d %d\n", ctIndex, ctIndex+1, ctIndex+2, ctIndex+3);
+	//	printf("-------------------------------\n");
+	//}
 
 }
 
@@ -362,7 +364,7 @@ __global__ void fileEncryption256counterWithOneTableExtendedSharedMemoryBytePerm
 	}
 
 	// Initialize ciphertext index
-	u32 ctIndex = threadIndex * 4;
+	u64 ctIndex = threadIndex * 4;
 
 	for (;;) {
 
@@ -417,16 +419,20 @@ __global__ void fileEncryption256counterWithOneTableExtendedSharedMemoryBytePerm
 		// Ciphertext index
 		ctIndex += threadCount * 4;
 
-		atomicAdd(&fileEncryptionTotalG, 1);
+		//atomicAdd(&fileEncryptionTotalG, 1);
 
 		if (pt2Init >= pt2Max && pt3Init >= pt3Max) {
 			break;
 		}
 	}
 
-	if (threadIndex == 0) {
-		printf("-------------------------------\n");
-	}
+	//if (threadIndex == 0) {
+	//	printf("threadIndex : %d\n", threadIndex);
+	//	printf("Plaintext   : %08x %08x %08x %08x\n", pt0Init, pt1Init, pt2Init, pt3Init);
+	//	printf("Ciphertext  : %08x %08x %08x %08x\n", s0, s1, s2, s3);
+	//	printf("Ciphertext index  : %d %d %d %d\n", ctIndex, ctIndex+1, ctIndex+2, ctIndex+3);
+	//	printf("-------------------------------\n");
+	//}
 
 }
 
@@ -445,10 +451,10 @@ __host__ int mainFileEncryption() {
 
 		// Get file size
 		fileIn.seekg(0, fileIn.end);
-		int fileSize = fileIn.tellg();
+		u32 fileSize = fileIn.tellg();
 		fileIn.seekg(0, fileIn.beg);
 		printf("File: %s\n", filePath.c_str());
-		printf("Size in bytes: %d\n", fileSize);
+		printf("Size in bytes: %u\n", fileSize);
 		printf("-------------------------------\n");
 
 		// Allocate plaintext and every round key
@@ -524,9 +530,9 @@ __host__ int mainFileEncryption() {
 
 		printf("Blocks                        : %d\n", BLOCKS);
 		printf("Threads                       : %d\n", THREADS);
-		printf("Total thread count            : %d\n", threadCount[0]);
-		printf("Total encryptions             : %d\n", encryptionCount[0]);
-		printf("Total encryptions in byte     : %d\n", ciphertextSize);
+		printf("Total thread count            : %u\n", threadCount[0]);
+		printf("Total encryptions             : %u\n", encryptionCount[0]);
+		printf("Total encryptions in byte     : %u\n", ciphertextSize);
 		printf("Each thread encryptions       : %.2f\n", encryptionCount[0] / (double)threadCount[0]);
 		printf("-------------------------------\n");
 		printf("Initial Counter               : %08x %08x %08x %08x\n", pt[0], pt[1], pt[2], pt[3]);
@@ -572,15 +578,15 @@ __host__ int mainFileEncryption() {
 		printf("-------------------------------\n");
 		printLastCUDAError();
 
-		u32 totEncryption;
-		cudaMemcpyFromSymbol(&totEncryption, fileEncryptionTotalG, sizeof(u32));
-		printf("Total encryptions : %I64d\n", totEncryption);
-		printf("-------------------------------\n");
+		//u32 totEncryption;
+		//cudaMemcpyFromSymbol(&totEncryption, fileEncryptionTotalG, sizeof(u32));
+		//printf("Total encryptions : %I64d\n", totEncryption);
+		//printf("-------------------------------\n");
 
 		beginTime = clock();
 		u32 *ctH = new u32[encryptionCount[0] * U32_SIZE];
 		cudaMemcpy(ctH, ct, ciphertextSize, cudaMemcpyDeviceToHost);
-		printf("MEMCPY Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
+		printf("MEMCPY\nTime elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 		printf("-------------------------------\n");
 
 		beginTime = clock();
