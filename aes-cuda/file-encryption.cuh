@@ -519,7 +519,8 @@ __host__ int mainFileEncryption() {
 		double totalBlockSize = (double)fileSize / BYTE_COUNT;
 		encryptionCount[0] = ceil(totalBlockSize);
 		u32 ciphertextSize = encryptionCount[0] * U32_SIZE * sizeof(u32);
-		gpuErrorCheck(cudaMallocManaged(&ct, ciphertextSize));
+		//gpuErrorCheck(cudaMallocManaged(&ct, ciphertextSize));
+		gpuErrorCheck(cudaMalloc((void **)&ct, ciphertextSize));
 
 		printf("Blocks                        : %d\n", BLOCKS);
 		printf("Threads                       : %d\n", THREADS);
@@ -577,6 +578,12 @@ __host__ int mainFileEncryption() {
 		printf("-------------------------------\n");
 
 		beginTime = clock();
+		u32 *ctH = new u32[encryptionCount[0] * U32_SIZE];
+		cudaMemcpy(ctH, ct, ciphertextSize, cudaMemcpyDeviceToHost);
+		printf("MEMCPY Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
+		printf("-------------------------------\n");
+
+		beginTime = clock();
 		// Open output file
 		const std::string outFilePath = filePath + "_ENC";
 		printf("Encrypted File: %s\n", outFilePath.c_str());
@@ -610,7 +617,7 @@ __host__ int mainFileEncryption() {
 					readInt |= (0x000000FF & buffer[bufferIndex - 1]) << 8;
 					readInt |= (0x000000FF & buffer[bufferIndex    ]);
 					// XOR with ciphertext
-					readInt ^= ct[cipherTextIndex++];
+					readInt ^= ctH[cipherTextIndex++];
 					// Change 4 byte back to char
 					buffer[bufferIndex - 3] = readInt >> 24;
 					buffer[bufferIndex - 2] = readInt >> 16;
@@ -623,7 +630,7 @@ __host__ int mainFileEncryption() {
 						readInt |= (0x000000FF & buffer[bufferIndex - bufferIntIndex + extraByteIndex + 1]) << ((U32_SIZE -1 -extraByteIndex) * 8);
 					}
 					// XOR with ciphertext
-					readInt ^= ct[cipherTextIndex++];
+					readInt ^= ctH[cipherTextIndex++];
 					// Change bufferIntIndex byte back to char
 					for (int extraByteIndex = 0; extraByteIndex < bufferIntIndex; extraByteIndex++) {
 						buffer[bufferIndex - bufferIntIndex + extraByteIndex + 1] = readInt >> (U32_SIZE - 1 - extraByteIndex) * 8;
