@@ -36,7 +36,7 @@ int main() {
 	//main128Ctr();
 
 	// AES-192 Exhaustive Search
-	//main192ExhaustiveSearch();
+	//main192Exh austiveSearch();
 
 	// AES-192 Counter Mode
 	//main192Ctr();

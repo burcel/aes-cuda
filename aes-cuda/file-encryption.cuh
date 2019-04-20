@@ -442,9 +442,11 @@ __host__ int mainFileEncryption() {
 	printf("########## AES CTR File Encryption Implementation ##########\n");
 	printf("\n");
 
+	// Inputs
 	int chunkSize = 1024;
-	const std::string filePath = "C://file-encryption-test//william3.mp4";
 	int keyLen = AES_128_KEY_LEN_INT;
+	const std::string filePath = "C://file-encryption-test//movie3.mp4_ENC";
+	const std::string outFilePath = filePath + "_ENC";
 
 	std::fstream fileIn(filePath, std::fstream::in | std::fstream::binary);
 	if (fileIn) {
@@ -453,8 +455,9 @@ __host__ int mainFileEncryption() {
 		fileIn.seekg(0, fileIn.end);
 		u32 fileSize = fileIn.tellg();
 		fileIn.seekg(0, fileIn.beg);
-		printf("File: %s\n", filePath.c_str());
-		printf("Size in bytes: %u\n", fileSize);
+		printf("File path           : %s\n", filePath.c_str());
+		printf("File size in bytes  : %d\n", fileSize);
+		printf("Encrypted file path : %s\n", outFilePath.c_str());
 		printf("-------------------------------\n");
 
 		// Allocate plaintext and every round key
@@ -525,6 +528,8 @@ __host__ int mainFileEncryption() {
 		double totalBlockSize = (double)fileSize / BYTE_COUNT;
 		encryptionCount[0] = ceil(totalBlockSize);
 		u32 ciphertextSize = encryptionCount[0] * U32_SIZE * sizeof(u32);
+
+		// Allocate ciphertext
 		//gpuErrorCheck(cudaMallocManaged(&ct, ciphertextSize));
 		gpuErrorCheck(cudaMalloc((void **)&ct, ciphertextSize));
 
@@ -574,8 +579,7 @@ __host__ int mainFileEncryption() {
 		}
 		
 		cudaDeviceSynchronize();
-		printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
-		printf("-------------------------------\n");
+		printf("Time elapsed (Encryption) : %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 		printLastCUDAError();
 
 		//u32 totEncryption;
@@ -586,14 +590,12 @@ __host__ int mainFileEncryption() {
 		beginTime = clock();
 		u32 *ctH = new u32[encryptionCount[0] * U32_SIZE];
 		cudaMemcpy(ctH, ct, ciphertextSize, cudaMemcpyDeviceToHost);
-		printf("MEMCPY\nTime elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
-		printf("-------------------------------\n");
+		printf("Time elapsed (Memcpy)     : %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 
-		beginTime = clock();
+		//return 0;
+
 		// Open output file
-		const std::string outFilePath = filePath + "_ENC";
-		printf("Encrypted File: %s\n", outFilePath.c_str());
-		printf("-------------------------------\n");
+		beginTime = clock();
 		std::fstream fileOut(outFilePath, std::fstream::out | std::fstream::binary);
 		u32 cipherTextIndex = 0;
 		// Allocate file buffer
@@ -650,8 +652,7 @@ __host__ int mainFileEncryption() {
 				break;
 			}
 		}
-		printf("Time elapsed: %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
-		printf("-------------------------------\n");
+		printf("Time elapsed (File write) : %f sec\n", float(clock() - beginTime) / CLOCKS_PER_SEC);
 
 		delete[] buffer;
 		fileOut.close();
