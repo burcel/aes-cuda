@@ -139,10 +139,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePermPartlyExtendedSBo
 
 		pt3Init++;
 		
-		if (s0 == 0x936CA359 && s1 == 0x32CC2BC0 && s2 == 0x7F5ABFAE && s3 == 0xECFAB28B) {
-			printf("BINGO\n");
-		}
-
 	}
 
 	if (threadIndex == 1048575) {
@@ -249,10 +245,6 @@ __global__ void counterWithOneTableExtendedSharedMemoryBytePerm4ShiftedSbox(u32*
 
 		// Create key as 32 bit unsigned integers
 		pt3Init++;
-
-		if (s0 == 0x936CA359 && s1 == 0x32CC2BC0 && s2 == 0x7F5ABFAE && s3 == 0xECFAB28B) {
-			printf("BINGO\n");
-		}
 	}
 
 	if (threadIndex == 1048575) {

@@ -445,7 +445,7 @@ __host__ int mainFileEncryption() {
 	// Inputs
 	int chunkSize = 1024;
 	int keyLen = AES_128_KEY_LEN_INT;
-	const std::string filePath = "C://file-encryption-test//movie3.mp4_ENC";
+	const std::string filePath = "C://file-encryption-test//movie4.mp4";
 	const std::string outFilePath = filePath + "_ENC";
 
 	std::fstream fileIn(filePath, std::fstream::in | std::fstream::binary);
@@ -456,7 +456,7 @@ __host__ int mainFileEncryption() {
 		u32 fileSize = fileIn.tellg();
 		fileIn.seekg(0, fileIn.beg);
 		printf("File path           : %s\n", filePath.c_str());
-		printf("File size in bytes  : %d\n", fileSize);
+		printf("File size in bytes  : %u\n", fileSize);
 		printf("Encrypted file path : %s\n", outFilePath.c_str());
 		printf("-------------------------------\n");
 

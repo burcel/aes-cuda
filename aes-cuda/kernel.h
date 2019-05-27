@@ -5,7 +5,7 @@ typedef unsigned long long	    u64;
 
 #define BLOCKS				1024
 #define THREADS				1024
-#define TWO_POWER_RANGE		32
+#define TWO_POWER_RANGE		30
 
 #define SHARED_MEM_BANK_SIZE			32
 #define S_BOX_BANK_SIZE					8

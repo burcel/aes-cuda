@@ -17,26 +17,26 @@
 // Custom header 
 #include "kernel.h"
 //
-//#include "128-es.cuh"
+#include "128-es.cuh"
 #include "128-ctr.cuh"
-//#include "192-es.cuh"
+#include "192-es.cuh"
 #include "192-ctr.cuh"
-//#include "256-es.cuh"
+#include "256-es.cuh"
 #include "256-ctr.cuh"
-//#include "small.cuh"
-//#include "silent.cuh"
+#include "small.cuh"
+#include "silent.cuh"
 #include "file-encryption.cuh"
 
 int main() {
 
 	// AES-128 Exhaustive Search
-	//main128ExhaustiveSearch();
+	main128ExhaustiveSearch();
 
 	// AES-128 Counter Mode
 	//main128Ctr();
 
 	// AES-192 Exhaustive Search
-	//main192Exh austiveSearch();
+	//main192ExhaustiveSearch();
 
 	// AES-192 Counter Mode
 	//main192Ctr();
@@ -54,7 +54,7 @@ int main() {
 	//mainSilent();
 
 	// File Encryption
-	mainFileEncryption();
+	//mainFileEncryption();
 
 	return 0;
 }
